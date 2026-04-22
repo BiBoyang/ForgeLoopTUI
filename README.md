@@ -67,3 +67,7 @@ You can adapt your own agent events to `RenderEvent` and keep this library indep
 ```bash
 swift test
 ```
+
+## Related Projects
+
+- `ForgeLoop` (main coding-agent application): https://github.com/BiBoyang/ForgeLoop
