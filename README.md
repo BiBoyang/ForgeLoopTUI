@@ -76,3 +76,11 @@ swift test
 ## Related Projects
 
 - `ForgeLoop` (main coding-agent application): https://github.com/BiBoyang/ForgeLoop
+
+## Suggested GitHub Topics
+
+- `swift`
+- `tui`
+- `terminal-ui`
+- `llm-agent`
+- `streaming`
