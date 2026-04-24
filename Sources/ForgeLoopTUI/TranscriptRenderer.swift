@@ -23,6 +23,10 @@ public final class TranscriptRenderer {
         self.markdownEngine = markdownEngine
     }
 
+    public convenience init(markdownOptions: MarkdownRenderOptions) {
+        self.init(markdownEngine: StreamingMarkdownEngine(options: markdownOptions))
+    }
+
     public var transcriptLines: [String] { lines.all }
 
     public func applyCore(_ event: CoreRenderEvent) {

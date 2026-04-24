@@ -12,6 +12,9 @@ It provides:
 - terminal-friendly Markdown presentation for headings, lists, blockquotes, fenced code blocks, and tables
 - in-place streaming replacement with `inlineAnchor` / `legacyAbsolute` strategies
 - tool execution placeholders (`running...` -> `done/failed`)
+- single-line text input primitives with CJK-safe cursor accounting and horizontal scrolling
+- modal/list-picker primitives for temporary terminal overlays
+- semantic ANSI styling with plain-text fallback
 - ANSI-aware physical row accounting for wrapped lines
 - safe stdout writing with `EINTR` / `EAGAIN` handling
 - logical-line normalization for embedded `\n` / `\r\n`
@@ -77,6 +80,100 @@ You can also use:
 - `TranscriptRenderer.activeStreamingRange` to know which transcript range is still mutable
 
 Low-level logical-line and terminal-metric helpers are kept as implementation details; the stable consumer-facing API is centered on `TUI`, `TranscriptRenderer`, `RenderEvent`, `RenderMessage`, `Style`, `prefixedLogicalLines`, and `StreamingTranscriptAppendState`.
+
+## Interaction Primitives
+
+`ForgeLoopTUI` also exposes reusable terminal interaction building blocks that do not depend on any chat or agent semantics:
+
+- `Style`
+  - semantic styles such as `header`, `dimmed`, `running`, `success`, `warning`, `error`, and `selection`
+  - `automatic` / `ansi` / `plain` rendering modes
+- `TextInputState`
+  - single-line editor state with cursor movement, backspace/delete, `Home` / `End`, and horizontal scrolling
+  - `render(prefix:totalWidth:)` returns a line plus `cursorOffset` ready for `TUI.requestRender`
+- `ModalRenderer`
+  - lightweight title/body/footer modal framing
+- `ListPickerState` + `ListPickerRenderer`
+  - arrow-key style selection state and renderer for modal pickers such as `/model`
+
+Example:
+
+```swift
+import ForgeLoopTUI
+
+var input = TextInputState(text: "帮我看看这个函数的问题")
+input.handle(.moveToEnd)
+let renderedInput = input.render(prefix: Style.prompt("❯ ", mode: .ansi), totalWidth: 24)
+
+let tui = TUI()
+tui.requestRender(lines: [renderedInput.line], cursorOffset: renderedInput.cursorOffset)
+
+var picker = ListPickerState(
+    title: "Select a model",
+    subtitle: "provider: openai",
+    items: [
+        .init(id: "gpt-4.1", title: "gpt-4.1"),
+        .init(id: "gpt-4o", title: "gpt-4o"),
+        .init(id: "o3-mini", title: "o3-mini"),
+    ],
+    selectedIndex: 1
+)
+
+let pickerLines = ListPickerRenderer(styleMode: .ansi).render(state: picker)
+tui.requestRender(lines: pickerLines)
+```
+
+## Customizing Wide Tables
+
+Wide Markdown tables are now configurable by the caller. `ForgeLoopTUI` ships with a default policy that tries:
+
+1. compact column widths
+2. truncate long cell contents
+3. degrade to raw Markdown only if the table still cannot fit
+
+If your app wants different behavior when calling `ForgeLoopTUI`, configure it at renderer/engine creation time:
+
+```swift
+import ForgeLoopTUI
+
+let options = MarkdownRenderOptions(
+    tablePolicy: TableRenderPolicy(
+        maxRenderedWidth: 96,
+        minColumnWidth: 6,
+        maxColumnWidth: 28,
+        truncationIndicator: "...",
+        overflowBehavior: .compactThenTruncateThenDegrade
+    )
+)
+
+let renderer = TranscriptRenderer(markdownOptions: options)
+```
+
+If you prefer the old “too wide means keep raw Markdown” behavior:
+
+```swift
+let renderer = TranscriptRenderer(
+    markdownOptions: .init(
+        tablePolicy: .init(
+            maxRenderedWidth: 80,
+            minColumnWidth: 6,
+            maxColumnWidth: 24,
+            truncationIndicator: "…",
+            overflowBehavior: .degradeImmediately
+        )
+    )
+)
+```
+
+The public types involved are:
+
+- `MarkdownRenderOptions`
+- `TableRenderPolicy`
+- `TableOverflowBehavior`
+- `StreamingMarkdownEngine(options:)`
+- `TranscriptRenderer(markdownOptions:)`
+
+For design rationale and change notes, see `docs/markdown-table-rendering.md`.
 
 ## Event Model
 

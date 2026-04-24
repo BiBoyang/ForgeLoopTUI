@@ -49,4 +49,29 @@ final class PublicAPISmokeTests: XCTestCase {
         XCTAssertTrue(renderer.transcriptLines.contains("⎿ done: Loaded 2 lines"))
         XCTAssertFalse(recorder.allChunks.isEmpty)
     }
+
+    func testInteractionSurfaceSupportsInputAndPickerFlow() {
+        var input = TextInputState(text: "demo 中文 prompt")
+        input.handle(.moveToEnd)
+        let renderedInput = input.render(prefix: Style.prompt("❯ ", mode: .plain), totalWidth: 12)
+
+        var picker = ListPickerState(
+            title: "Select a model",
+            subtitle: "provider: openai",
+            items: [
+                .init(id: "gpt-4.1", title: "gpt-4.1"),
+                .init(id: "gpt-4o", title: "gpt-4o"),
+            ],
+            selectedIndex: 0
+        )
+
+        _ = picker.handle(.moveDown)
+        let pickerLines = ListPickerRenderer(styleMode: .plain).render(state: picker)
+
+        XCTAssertTrue(renderedInput.line.hasPrefix("❯ "))
+        XCTAssertEqual(renderedInput.cursorOffset, 0)
+        XCTAssertEqual(picker.selectedItem?.id, "gpt-4o")
+        XCTAssertEqual(pickerLines.first, "Select a model")
+        XCTAssertTrue(pickerLines.contains("● gpt-4o"))
+    }
 }

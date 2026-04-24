@@ -48,6 +48,65 @@ This verifies:
 - append-only output behavior
 - retained-state reset behavior
 
+### `Style`
+
+Use when changing:
+
+- `Sources/ForgeLoopTUI/Style.swift`
+- ANSI-related width or rendering behavior
+
+Command:
+
+```bash
+cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI
+swift test --filter StyleTests
+```
+
+This verifies:
+
+- ANSI wrapping semantics
+- plain-text fallback
+- CJK-safe visible-width accounting
+
+### `TextInput`
+
+Use when changing:
+
+- `Sources/ForgeLoopTUI/TextInput.swift`
+
+Command:
+
+```bash
+cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI
+swift test --filter TextInputTests
+```
+
+This verifies:
+
+- insert/delete behavior
+- `Home` / `End` movement
+- horizontal scrolling
+- CJK cursor accounting
+
+### `Modal`
+
+Use when changing:
+
+- `Sources/ForgeLoopTUI/Modal.swift`
+
+Command:
+
+```bash
+cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI
+swift test --filter ModalTests
+```
+
+This verifies:
+
+- modal title/body/footer rendering
+- picker navigation
+- selection/confirmation/cancel flow
+
 ### `TranscriptRenderer`
 
 Use when changing:
@@ -115,6 +174,8 @@ This smoke test verifies that the public API is sufficient to:
 - create a `TranscriptRenderer`
 - read rendered output through `TranscriptRenderer.transcriptLines`
 - create a `StreamingTranscriptAppendState`
+- create a `TextInputState`
+- create a `ListPickerState`
 - render a user prompt once
 - stream assistant output with transcript deltas
 - flush the final assistant output on end

@@ -5,6 +5,49 @@ public protocol MarkdownEngine: AnyObject {
     func render(text: String, isFinal: Bool) -> [String]
 }
 
+public struct MarkdownRenderOptions: Sendable, Equatable {
+    public var tablePolicy: TableRenderPolicy
+
+    public init(tablePolicy: TableRenderPolicy = .default) {
+        self.tablePolicy = tablePolicy
+    }
+}
+
+public struct TableRenderPolicy: Sendable, Equatable {
+    public var maxRenderedWidth: Int
+    public var minColumnWidth: Int
+    public var maxColumnWidth: Int?
+    public var truncationIndicator: String
+    public var overflowBehavior: TableOverflowBehavior
+
+    public static let `default` = TableRenderPolicy(
+        maxRenderedWidth: 80,
+        minColumnWidth: 6,
+        maxColumnWidth: 24,
+        truncationIndicator: "…",
+        overflowBehavior: .compactThenTruncateThenDegrade
+    )
+
+    public init(
+        maxRenderedWidth: Int = 80,
+        minColumnWidth: Int = 6,
+        maxColumnWidth: Int? = 24,
+        truncationIndicator: String = "…",
+        overflowBehavior: TableOverflowBehavior = .compactThenTruncateThenDegrade
+    ) {
+        self.maxRenderedWidth = maxRenderedWidth
+        self.minColumnWidth = minColumnWidth
+        self.maxColumnWidth = maxColumnWidth
+        self.truncationIndicator = truncationIndicator.isEmpty ? "…" : truncationIndicator
+        self.overflowBehavior = overflowBehavior
+    }
+}
+
+public enum TableOverflowBehavior: Sendable, Equatable {
+    case degradeImmediately
+    case compactThenTruncateThenDegrade
+}
+
 public final class PlainTextMarkdownEngine: MarkdownEngine {
     public init() {}
 
@@ -19,10 +62,12 @@ public final class PlainTextMarkdownEngine: MarkdownEngine {
 public final class StreamingMarkdownEngine: MarkdownEngine {
     private var stableSource = ""
     private var stableRendered: [String] = []
-    private let maxRenderedTableWidth = 80
     private let thematicBreak = String(repeating: "─", count: 24)
+    public let options: MarkdownRenderOptions
 
-    public init() {}
+    public init(options: MarkdownRenderOptions = .init()) {
+        self.options = options
+    }
 
     public func reset() {
         stableSource = ""
@@ -391,11 +436,63 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         return false
     }
 
-    private func shouldDegradeWideTable(widths: [Int]) -> Bool {
-        let renderedWidth = visibleWidth(
-            borderLine(left: "┌", middle: "┬", right: "┐", widths: widths)
-        )
-        return renderedWidth > maxRenderedTableWidth
+    private func resolvedColumnWidths(
+        idealWidths: [Int],
+        columnCount: Int,
+        policy: TableRenderPolicy
+    ) -> [Int]? {
+        guard !idealWidths.isEmpty, idealWidths.count == columnCount else { return nil }
+
+        switch policy.overflowBehavior {
+        case .degradeImmediately:
+            return shouldDegradeWideTable(widths: idealWidths, maxRenderedWidth: policy.maxRenderedWidth)
+                ? nil
+                : idealWidths
+        case .compactThenTruncateThenDegrade:
+            let minimumWidth = max(1, policy.minColumnWidth)
+            let maxContentWidth = policy.maxRenderedWidth - tableChromeWidth(for: columnCount)
+            guard maxContentWidth >= minimumWidth * columnCount else { return nil }
+
+            var widths = idealWidths.map { width in
+                let clamped = max(minimumWidth, width)
+                if let maxColumnWidth = policy.maxColumnWidth {
+                    return min(clamped, max(maxColumnWidth, minimumWidth))
+                }
+                return clamped
+            }
+
+            var totalWidth = widths.reduce(0, +)
+            while totalWidth > maxContentWidth {
+                guard let widestIndex = widestShrinkableColumn(in: widths, minimumWidth: minimumWidth) else {
+                    return nil
+                }
+                widths[widestIndex] -= 1
+                totalWidth -= 1
+            }
+
+            return widths
+        }
+    }
+
+    private func widestShrinkableColumn(in widths: [Int], minimumWidth: Int) -> Int? {
+        var widestIndex: Int?
+        var widestValue = minimumWidth
+
+        for (index, width) in widths.enumerated() where width > widestValue {
+            widestValue = width
+            widestIndex = index
+        }
+
+        return widestIndex
+    }
+
+    private func tableChromeWidth(for columnCount: Int) -> Int {
+        columnCount * 3 + 1
+    }
+
+    private func shouldDegradeWideTable(widths: [Int], maxRenderedWidth: Int) -> Bool {
+        let renderedWidth = visibleWidth(borderLine(left: "┌", middle: "┬", right: "┐", widths: widths))
+        return renderedWidth > maxRenderedWidth
     }
 
     private func parseTableCells(_ line: String) -> [String]? {
@@ -443,18 +540,22 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
             widths[col] = max(widths[col], 1)
         }
 
-        if shouldDegradeWideTable(widths: widths) {
+        guard let resolvedWidths = resolvedColumnWidths(
+            idealWidths: widths,
+            columnCount: header.count,
+            policy: options.tablePolicy
+        ) else {
             return nil
         }
 
         var output: [String] = []
-        output.append(borderLine(left: "┌", middle: "┬", right: "┐", widths: widths))
-        output.append(tableRow(cells: header, aligns: alignment, widths: widths))
-        output.append(borderLine(left: "├", middle: "┼", right: "┤", widths: widths))
+        output.append(borderLine(left: "┌", middle: "┬", right: "┐", widths: resolvedWidths))
+        output.append(tableRow(cells: header, aligns: alignment, widths: resolvedWidths, policy: options.tablePolicy))
+        output.append(borderLine(left: "├", middle: "┼", right: "┤", widths: resolvedWidths))
         for row in normalizedRows {
-            output.append(tableRow(cells: row, aligns: alignment, widths: widths))
+            output.append(tableRow(cells: row, aligns: alignment, widths: resolvedWidths, policy: options.tablePolicy))
         }
-        output.append(borderLine(left: "└", middle: "┴", right: "┘", widths: widths))
+        output.append(borderLine(left: "└", middle: "┴", right: "┘", widths: resolvedWidths))
         return output
     }
 
@@ -475,27 +576,58 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         return left + segments.joined(separator: middle) + right
     }
 
-    private func tableRow(cells: [String], aligns: [CellAlign], widths: [Int]) -> String {
+    private func tableRow(cells: [String], aligns: [CellAlign], widths: [Int], policy: TableRenderPolicy) -> String {
         var parts: [String] = []
         for index in 0..<cells.count {
-            parts.append(padded(cells[index], width: widths[index], align: aligns[index]))
+            parts.append(padded(cells[index], width: widths[index], align: aligns[index], policy: policy))
         }
         return "│ " + parts.joined(separator: " │ ") + " │"
     }
 
-    private func padded(_ value: String, width: Int, align: CellAlign) -> String {
-        let textWidth = visibleWidth(value)
+    private func padded(_ value: String, width: Int, align: CellAlign, policy: TableRenderPolicy) -> String {
+        let fittedValue = truncate(value, toFit: width, indicator: policy.truncationIndicator)
+        let textWidth = visibleWidth(fittedValue)
         let gap = max(0, width - textWidth)
 
         switch align {
         case .left:
-            return value + String(repeating: " ", count: gap)
+            return fittedValue + String(repeating: " ", count: gap)
         case .right:
-            return String(repeating: " ", count: gap) + value
+            return String(repeating: " ", count: gap) + fittedValue
         case .center:
             let left = gap / 2
             let right = gap - left
-            return String(repeating: " ", count: left) + value + String(repeating: " ", count: right)
+            return String(repeating: " ", count: left) + fittedValue + String(repeating: " ", count: right)
         }
+    }
+
+    private func truncate(_ value: String, toFit maxWidth: Int, indicator: String) -> String {
+        guard maxWidth > 0 else { return "" }
+        guard visibleWidth(value) > maxWidth else { return value }
+
+        let indicatorWidth = min(maxWidth, visibleWidth(indicator))
+        if indicatorWidth >= maxWidth {
+            return fittingPrefix(of: indicator, maxWidth: maxWidth)
+        }
+
+        let prefixWidth = maxWidth - indicatorWidth
+        return fittingPrefix(of: value, maxWidth: prefixWidth) + indicator
+    }
+
+    private func fittingPrefix(of value: String, maxWidth: Int) -> String {
+        guard maxWidth > 0 else { return "" }
+        var result = ""
+        var currentWidth = 0
+
+        for character in value {
+            let characterWidth = visibleWidth(String(character))
+            if currentWidth + characterWidth > maxWidth {
+                break
+            }
+            result.append(character)
+            currentWidth += characterWidth
+        }
+
+        return result
     }
 }
