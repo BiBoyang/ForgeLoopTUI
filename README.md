@@ -9,9 +9,12 @@
 
 It provides:
 - event-driven transcript rendering
-- in-place streaming replacement (not append-only)
+- in-place streaming replacement with `inlineAnchor` / `legacyAbsolute` strategies
 - tool execution placeholders (`running...` -> `done/failed`)
-- simple full-screen terminal repaint (`ANSI clear + redraw`)
+- ANSI-aware physical row accounting for wrapped lines
+- safe stdout writing with `EINTR` / `EAGAIN` handling
+- logical-line normalization for embedded `\n` / `\r\n`
+- reusable streaming transcript append planner for scrollback-safe terminal output
 
 ## Requirements
 
@@ -55,6 +58,22 @@ func demo() {
 }
 ```
 
+## Rendering Modes
+
+- `inlineAnchor`:
+  - first frame prints directly without clearing the screen
+  - later frames rewrite only the dirty tail when possible
+  - automatically falls back to full redraw if the frame grows beyond the visible terminal height
+- `legacyAbsolute`:
+  - always does `ANSI clear + home + redraw`
+
+You can also use:
+
+- `appendFrame(lines:)` to write plain terminal output without retained-mode redraw
+- `resetRetainedFrame()` to drop inline redraw state before switching modes
+- `StreamingTranscriptAppendState` to compute transcript deltas for append-only streaming UIs
+- `TranscriptRenderer.activeStreamingRange` to know which transcript range is still mutable
+
 ## Event Model
 
 - `RenderMessage`: user / assistant / tool
@@ -72,6 +91,32 @@ You can adapt your own agent events to `RenderEvent` and keep this library indep
 ```bash
 swift test
 ```
+
+For a fuller testing workflow, see `TESTING.md`.
+
+## Examples
+
+There is a runnable local example package under `Examples/MinimalStreamingDemo`.
+
+Run it with:
+
+```bash
+cd Examples/MinimalStreamingDemo
+swift run
+```
+
+Run it with a custom fixture:
+
+```bash
+cd Examples/MinimalStreamingDemo
+swift run MinimalStreamingDemo ../Fixtures/markdownview-sample.md
+```
+
+The example shows:
+- a user prompt rendered once
+- assistant streaming with append-only transcript deltas
+- final flush on `messageEnd`
+- a simple tool start/end placeholder flow
 
 ## Related Projects
 

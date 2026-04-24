@@ -7,6 +7,7 @@ public final class TranscriptRenderer {
     private var pendingTools: [String: Int] = [:]
 
     public var pendingToolCount: Int { pendingTools.count }
+    public var activeStreamingRange: Range<Int>? { streamingRange }
 
     private let maxSummaryRenderLength = 120
 
@@ -19,7 +20,9 @@ public final class TranscriptRenderer {
         case .messageStart(let message):
             switch message {
             case .user(let text):
-                append(Style.user("❯ " + text))
+                for line in prefixedLogicalLines(prefix: Style.user("❯ "), text: text) {
+                    append(line)
+                }
                 append("")
             case .assistant:
                 let start = lines.count
@@ -42,9 +45,9 @@ public final class TranscriptRenderer {
         case .toolExecutionEnd(let toolCallId, _, let isError, let summary):
             guard let lineIndex = pendingTools.removeValue(forKey: toolCallId) else { break }
             let prefix = isError ? "⎿ failed" : "⎿ done"
-            let suffix = truncateIfNeeded(summary ?? "")
-            let result = suffix.isEmpty ? prefix : "\(prefix): \(suffix)"
-            lines.replace(range: lineIndex..<(lineIndex + 1), with: [result])
+            let summaryLines = formatSummaryLines(summary)
+            let resultLines = summaryLines.isEmpty ? [prefix] : summaryLines.map { "\(prefix): \($0)" }
+            lines.replace(range: lineIndex..<(lineIndex + 1), with: resultLines)
         }
     }
 
@@ -54,13 +57,18 @@ public final class TranscriptRenderer {
         return String(text[..<endIndex]) + "..."
     }
 
+    private func formatSummaryLines(_ summary: String?) -> [String] {
+        guard let summary, !summary.isEmpty else { return [] }
+        return splitLogicalLines(summary).map(truncateIfNeeded)
+    }
+
     private func renderAssistantLines(_ message: RenderMessage) -> [String] {
         guard case .assistant(let text, let errorMessage) = message else {
             return [""]
         }
 
         if !text.isEmpty {
-            return text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+            return splitLogicalLines(text)
         }
 
         if

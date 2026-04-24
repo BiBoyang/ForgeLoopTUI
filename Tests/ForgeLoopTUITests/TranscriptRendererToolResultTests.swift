@@ -123,4 +123,14 @@ final class TranscriptRendererToolResultTests: XCTestCase {
         let lines = renderer.lines.all
         XCTAssertTrue(lines.contains("⎿ done: first line"))
     }
+
+    func testToolMultilineSummarySplitsAcrossLogicalLines() {
+        let renderer = TranscriptRenderer()
+        renderer.apply(.toolExecutionStart(toolCallId: "tc-9", toolName: "bash", args: "{}"))
+        renderer.apply(.toolExecutionEnd(toolCallId: "tc-9", toolName: "bash", isError: false, summary: "line1\nline2"))
+
+        let lines = renderer.lines.all
+        XCTAssertTrue(lines.contains("⎿ done: line1"))
+        XCTAssertTrue(lines.contains("⎿ done: line2"))
+    }
 }

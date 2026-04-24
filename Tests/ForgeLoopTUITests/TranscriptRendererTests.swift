@@ -155,4 +155,12 @@ final class TranscriptRendererTests: XCTestCase {
         let lines = renderer.lines.all
         XCTAssertTrue(lines.contains("[error] OpenAI Chat Completions HTTP 404: Not Found"))
     }
+
+    func testMultilineUserMessageSplitsIntoLogicalLines() {
+        let renderer = TranscriptRenderer()
+
+        renderer.apply(.messageStart(message: .user("line1\nline2\nline3")))
+
+        XCTAssertEqual(renderer.lines.all, ["❯ line1", "line2", "line3", ""])
+    }
 }
