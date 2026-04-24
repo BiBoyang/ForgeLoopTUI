@@ -7,10 +7,10 @@ final class TranscriptRendererTests: XCTestCase {
 
     func testStreamingUpdateReplacesPreviousContent() {
         let renderer = TranscriptRenderer()
-        renderer.apply(.messageStart(message: .assistant(text: "", errorMessage: nil)))
-        renderer.apply(.messageUpdate(message: .assistant(text: "first version", errorMessage: nil)))
-        renderer.apply(.messageUpdate(message: .assistant(text: "second version", errorMessage: nil)))
-        renderer.apply(.messageEnd(message: .assistant(text: "second version", errorMessage: nil)))
+        renderer.apply(.messageStart(message: .assistant(text: "", thinking: nil, errorMessage: nil)))
+        renderer.apply(.messageUpdate(message: .assistant(text: "first version", thinking: nil, errorMessage: nil)))
+        renderer.apply(.messageUpdate(message: .assistant(text: "second version", thinking: nil, errorMessage: nil)))
+        renderer.apply(.messageEnd(message: .assistant(text: "second version", thinking: nil, errorMessage: nil)))
 
         let lines = renderer.transcriptLines
         XCTAssertTrue(lines.contains("second version"))
@@ -21,10 +21,10 @@ final class TranscriptRendererTests: XCTestCase {
 
     func testStreamingUpdateShortensLinesNoResidue() {
         let renderer = TranscriptRenderer()
-        renderer.apply(.messageStart(message: .assistant(text: "", errorMessage: nil)))
-        renderer.apply(.messageUpdate(message: .assistant(text: "line1\nline2\nline3", errorMessage: nil)))
-        renderer.apply(.messageUpdate(message: .assistant(text: "only one", errorMessage: nil)))
-        renderer.apply(.messageEnd(message: .assistant(text: "only one", errorMessage: nil)))
+        renderer.apply(.messageStart(message: .assistant(text: "", thinking: nil, errorMessage: nil)))
+        renderer.apply(.messageUpdate(message: .assistant(text: "line1\nline2\nline3", thinking: nil, errorMessage: nil)))
+        renderer.apply(.messageUpdate(message: .assistant(text: "only one", thinking: nil, errorMessage: nil)))
+        renderer.apply(.messageEnd(message: .assistant(text: "only one", thinking: nil, errorMessage: nil)))
 
         let lines = renderer.transcriptLines
         XCTAssertTrue(lines.contains("only one"))
@@ -37,9 +37,9 @@ final class TranscriptRendererTests: XCTestCase {
 
     func testMessageEndAppendsSingleBlankSeparator() {
         let renderer = TranscriptRenderer()
-        renderer.apply(.messageStart(message: .assistant(text: "", errorMessage: nil)))
-        renderer.apply(.messageUpdate(message: .assistant(text: "hello", errorMessage: nil)))
-        renderer.apply(.messageEnd(message: .assistant(text: "hello", errorMessage: nil)))
+        renderer.apply(.messageStart(message: .assistant(text: "", thinking: nil, errorMessage: nil)))
+        renderer.apply(.messageUpdate(message: .assistant(text: "hello", thinking: nil, errorMessage: nil)))
+        renderer.apply(.messageEnd(message: .assistant(text: "hello", thinking: nil, errorMessage: nil)))
 
         let lines = renderer.transcriptLines
         let blankCount = lines.filter { $0.isEmpty }.count
@@ -135,11 +135,11 @@ final class TranscriptRendererTests: XCTestCase {
 
     func testLongShortLongUpdateFinalContentOnly() {
         let renderer = TranscriptRenderer()
-        renderer.apply(.messageStart(message: .assistant(text: "", errorMessage: nil)))
-        renderer.apply(.messageUpdate(message: .assistant(text: "alpha\nbeta\ngamma", errorMessage: nil)))
-        renderer.apply(.messageUpdate(message: .assistant(text: "x", errorMessage: nil)))
-        renderer.apply(.messageUpdate(message: .assistant(text: "one\ntwo\nthree\nfour", errorMessage: nil)))
-        renderer.apply(.messageEnd(message: .assistant(text: "one\ntwo\nthree\nfour", errorMessage: nil)))
+        renderer.apply(.messageStart(message: .assistant(text: "", thinking: nil, errorMessage: nil)))
+        renderer.apply(.messageUpdate(message: .assistant(text: "alpha\nbeta\ngamma", thinking: nil, errorMessage: nil)))
+        renderer.apply(.messageUpdate(message: .assistant(text: "x", thinking: nil, errorMessage: nil)))
+        renderer.apply(.messageUpdate(message: .assistant(text: "one\ntwo\nthree\nfour", thinking: nil, errorMessage: nil)))
+        renderer.apply(.messageEnd(message: .assistant(text: "one\ntwo\nthree\nfour", thinking: nil, errorMessage: nil)))
 
         let lines = renderer.transcriptLines.filter { !$0.isEmpty }
         XCTAssertEqual(lines, ["one", "two", "three", "four"])
@@ -149,8 +149,8 @@ final class TranscriptRendererTests: XCTestCase {
 
     func testErrorMessageShownWhenAssistantTextEmpty() {
         let renderer = TranscriptRenderer()
-        renderer.apply(.messageStart(message: .assistant(text: "", errorMessage: nil)))
-        renderer.apply(.messageEnd(message: .assistant(text: "", errorMessage: "OpenAI Chat Completions HTTP 404: Not Found")))
+        renderer.apply(.messageStart(message: .assistant(text: "", thinking: nil, errorMessage: nil)))
+        renderer.apply(.messageEnd(message: .assistant(text: "", thinking: nil, errorMessage: "OpenAI Chat Completions HTTP 404: Not Found")))
 
         let lines = renderer.transcriptLines
         XCTAssertTrue(lines.contains("[error] OpenAI Chat Completions HTTP 404: Not Found"))

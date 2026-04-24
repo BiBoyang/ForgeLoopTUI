@@ -24,7 +24,7 @@ func resolveFixtureURL(from arguments: [String]) -> URL {
 
 @MainActor
 func runDemo() throws {
-    let tui = TUI()
+    let tui = TUI(isTTY: isatty(STDOUT_FILENO) == 1)
     let renderer = TranscriptRenderer()
     var appendState = StreamingTranscriptAppendState()
     let fixtureURL = resolveFixtureURL(from: CommandLine.arguments)
@@ -41,26 +41,25 @@ func runDemo() throws {
         }
     }
 
-    renderer.apply(.messageStart(message: .user("stream fixture: \(fixtureURL.lastPathComponent)")))
+    renderer.applyCore(.insert(
+        lines: prefixedLogicalLines(
+            prefix: Style.user("❯ "),
+            text: "stream fixture: \(fixtureURL.lastPathComponent)"
+        ) + [""]
+    ))
     appendTranscriptDelta()
 
-    renderer.apply(.messageStart(message: .assistant(text: "", errorMessage: nil)))
+    renderer.applyCore(.blockStart(id: "demo"))
 
     var accumulatedLines: [String] = []
     for line in fixtureLines {
         accumulatedLines.append(line)
-        renderer.apply(.messageUpdate(message: .assistant(
-            text: accumulatedLines.joined(separator: "\n"),
-            errorMessage: nil
-        )))
+        renderer.applyCore(.blockUpdate(id: "demo", lines: accumulatedLines))
         appendTranscriptDelta()
         usleep(20_000)
     }
 
-    renderer.apply(.messageEnd(message: .assistant(
-        text: accumulatedLines.joined(separator: "\n"),
-        errorMessage: nil
-    )))
+    renderer.applyCore(.blockEnd(id: "demo", lines: accumulatedLines, footer: nil))
 
     let finalDelta = appendState.consume(
         transcript: renderer.transcriptLines,
@@ -70,13 +69,8 @@ func runDemo() throws {
         tui.appendFrame(lines: finalDelta)
     }
 
-    renderer.apply(.toolExecutionStart(toolCallId: "readme", toolName: "read", args: #"{"path":"README.md"}"#))
-    renderer.apply(.toolExecutionEnd(
-        toolCallId: "readme",
-        toolName: "read",
-        isError: false,
-        summary: "Loaded \(fixtureLines.count) fixture lines"
-    ))
+    renderer.applyCore(.operationStart(id: "readme", header: #"● read({"path":"README.md"})"#, status: "⎿ running..."))
+    renderer.applyCore(.operationEnd(id: "readme", isError: false, result: "Loaded \(fixtureLines.count) fixture lines"))
     tui.appendFrame(lines: Array(renderer.transcriptLines.suffix(2)))
 }
 

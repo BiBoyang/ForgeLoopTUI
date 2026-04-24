@@ -1,6 +1,13 @@
 import Foundation
 import ForgeLoopTUI
 
+func splitFixtureLines(_ text: String) -> [String] {
+    let normalized = text
+        .replacingOccurrences(of: "\r\n", with: "\n")
+        .replacingOccurrences(of: "\r", with: "\n")
+    return normalized.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+}
+
 func resolveFixtureURL(from arguments: [String]) -> URL {
     if arguments.count > 1 {
         let path = arguments[1]
@@ -12,22 +19,28 @@ func resolveFixtureURL(from arguments: [String]) -> URL {
             .standardizedFileURL
     }
 
-    return URL(fileURLWithPath: "../Fixtures/markdownview-sample.md").standardizedFileURL
+    return URL(fileURLWithPath: "../Fixtures/markdown-table-showcase.md").standardizedFileURL
 }
 
 @MainActor
 func runShowcase() throws {
-    let tui = TUI()
     let renderer = TranscriptRenderer()
     let fixtureURL = resolveFixtureURL(from: CommandLine.arguments)
     let fixtureText = try String(contentsOf: fixtureURL, encoding: .utf8)
+    let fixtureLines = splitFixtureLines(fixtureText)
 
-    renderer.apply(.messageStart(message: .user("show markdown fixture: \(fixtureURL.lastPathComponent)")))
-    renderer.apply(.messageStart(message: .assistant(text: "", errorMessage: nil)))
-    renderer.apply(.messageUpdate(message: .assistant(text: fixtureText, errorMessage: nil)))
-    renderer.apply(.messageEnd(message: .assistant(text: fixtureText, errorMessage: nil)))
+    renderer.applyCore(.insert(
+        lines: prefixedLogicalLines(
+            prefix: Style.user("❯ "),
+            text: "show markdown fixture: \(fixtureURL.lastPathComponent)"
+        ) + [""]
+    ))
+    renderer.applyCore(.blockStart(id: "showcase"))
+    renderer.applyCore(.blockUpdate(id: "showcase", lines: fixtureLines))
+    renderer.applyCore(.blockEnd(id: "showcase", lines: fixtureLines, footer: nil))
 
-    tui.requestRender(lines: renderer.transcriptLines)
+    let output = renderer.transcriptLines.joined(separator: "\n") + "\n"
+    FileHandle.standardOutput.write(Data(output.utf8))
 }
 
 do {

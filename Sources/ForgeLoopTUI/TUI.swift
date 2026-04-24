@@ -91,7 +91,7 @@ public final class TUI: @unchecked Sendable {
         }
     }
 
-    func invalidate() {}
+    public func invalidate() {}
 
     public func requestRender(lines: [String], cursorOffset: Int? = nil) {
         let normalizedLines = splitLogicalLines(lines)

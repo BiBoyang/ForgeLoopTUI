@@ -161,13 +161,14 @@ final class TranscriptRendererMarkdownTests: XCTestCase {
     func testTranscriptRendererRendersTableInFinalOutput() {
         let renderer = TranscriptRenderer()
 
-        renderer.apply(.messageStart(message: .assistant(text: "", errorMessage: nil)))
+        renderer.apply(.messageStart(message: .assistant(text: "", thinking: nil, errorMessage: nil)))
         renderer.apply(.messageUpdate(message: .assistant(
             text: """
             | a | b |
             | --- | --- |
             | 1 | 2 |
             """,
+            thinking: nil,
             errorMessage: nil
         )))
         renderer.apply(.messageEnd(message: .assistant(
@@ -176,6 +177,7 @@ final class TranscriptRendererMarkdownTests: XCTestCase {
             | --- | --- |
             | 1 | 2 |
             """,
+            thinking: nil,
             errorMessage: nil
         )))
 
