@@ -56,7 +56,7 @@ final class MarkdownEngineTests: XCTestCase {
         XCTAssertFalse(lines.contains("| alice | 99 |"))
     }
 
-    func testStreamingEngineKeepsCodeFenceTableLikeTextAsPlainText() {
+    func testStreamingEngineRendersCodeFenceWithoutParsingNestedTable() {
         let engine = StreamingMarkdownEngine()
         let text = """
         ```markdown
@@ -68,13 +68,65 @@ final class MarkdownEngineTests: XCTestCase {
 
         let lines = engine.render(text: text, isFinal: true)
         XCTAssertEqual(lines, [
-            "```markdown",
-            "| a | b |",
-            "| --- | --- |",
-            "| 1 | 2 |",
-            "```",
+            "┌─ code markdown",
+            "│ | a | b |",
+            "│ | --- | --- |",
+            "│ | 1 | 2 |",
+            "└─ end code",
         ])
-        XCTAssertFalse(lines.contains(where: { $0.contains("┌") || $0.contains("│") }))
+        XCTAssertFalse(lines.contains(where: { $0.contains("│ a │") || $0.contains("┌──") }))
+    }
+
+    func testStreamingEngineFormatsHeadingsQuotesListsAndCodeBlocks() {
+        let engine = StreamingMarkdownEngine()
+        let text = """
+        # Title
+
+        > note
+        - bullet
+          * nested
+        1. first
+        ---
+        ```swift
+        let answer = 42
+        ```
+        """
+
+        let lines = engine.render(text: text, isFinal: true)
+        XCTAssertEqual(lines, [
+            "█ Title",
+            "",
+            "│ note",
+            "• bullet",
+            "  ◦ nested",
+            "1. first",
+            "────────────────────────",
+            "┌─ code swift",
+            "│ let answer = 42",
+            "└─ end code",
+        ])
+    }
+
+    func testStreamingEngineFormatsNestedBlockquotesAndMixedListHierarchy() {
+        let engine = StreamingMarkdownEngine()
+        let text = """
+        > quote
+        >> deeper quote
+        > - top bullet
+        >   - nested bullet
+        >     - deep bullet
+          - sibling bullet
+        """
+
+        let lines = engine.render(text: text, isFinal: true)
+        XCTAssertEqual(lines, [
+            "│ quote",
+            "│ │ deeper quote",
+            "│ • top bullet",
+            "│   ◦ nested bullet",
+            "│     ▪ deep bullet",
+            "  ◦ sibling bullet",
+        ])
     }
 
     func testStreamingEngineParsesEscapedPipeInCells() {
@@ -136,6 +188,24 @@ final class MarkdownEngineTests: XCTestCase {
             "| name | score |",
             "| nope | ---: |",
             "| alice | 99 |",
+        ])
+    }
+
+    func testStreamingEngineKeepsMismatchedBodyRowTableAsPlainText() {
+        let engine = StreamingMarkdownEngine()
+        let text = """
+        | name | score |
+        | --- | --- |
+        | alice |
+        | bob | 7 |
+        """
+
+        let lines = engine.render(text: text, isFinal: true)
+        XCTAssertEqual(lines, [
+            "| name | score |",
+            "| --- | --- |",
+            "| alice |",
+            "| bob | 7 |",
         ])
     }
 

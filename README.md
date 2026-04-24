@@ -9,6 +9,7 @@
 
 It provides:
 - event-driven transcript rendering
+- terminal-friendly Markdown presentation for headings, lists, blockquotes, fenced code blocks, and tables
 - in-place streaming replacement with `inlineAnchor` / `legacyAbsolute` strategies
 - tool execution placeholders (`running...` -> `done/failed`)
 - ANSI-aware physical row accounting for wrapped lines
@@ -131,6 +132,34 @@ cd Examples/MarkdownShowcase
 swift run
 ```
 
+Run the built-in edge-case fixture with:
+
+```bash
+cd Examples/MarkdownShowcase
+swift run MarkdownShowcase edge-cases
+```
+
+Run the long mixed-structure fixture with:
+
+```bash
+cd Examples/MarkdownShowcase
+swift run MarkdownShowcase long-mixed
+```
+
+Run the narrow-terminal stress fixture with:
+
+```bash
+cd Examples/MarkdownShowcase
+swift run MarkdownShowcase narrow-terminal
+```
+
+Run all bundled Markdown fixtures in one pass with:
+
+```bash
+cd Examples/MarkdownShowcase
+swift run MarkdownShowcase --all
+```
+
 Run it with a custom fixture:
 
 ```bash
@@ -139,6 +168,7 @@ swift run MarkdownShowcase ../Fixtures/markdownview-sample.md
 ```
 
 The Markdown example is intentionally separate from the smoke example so presentation tuning does not blur the public-API/stability contract.
+It now ships with a default showcase fixture, a dedicated table edge-case fixture, a longer mixed-structure fixture, and a narrow-terminal stress fixture so rendering tweaks can be checked against ideal, degraded, long-form, and tight-width output.
 
 ## Related Projects
 

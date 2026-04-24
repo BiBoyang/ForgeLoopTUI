@@ -133,6 +133,34 @@ cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI/Examples/MarkdownShowcase
 swift run
 ```
 
+Run the bundled edge-case fixture:
+
+```bash
+cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI/Examples/MarkdownShowcase
+swift run MarkdownShowcase edge-cases
+```
+
+Run the long mixed-structure fixture:
+
+```bash
+cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI/Examples/MarkdownShowcase
+swift run MarkdownShowcase long-mixed
+```
+
+Run the narrow-terminal stress fixture:
+
+```bash
+cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI/Examples/MarkdownShowcase
+swift run MarkdownShowcase narrow-terminal
+```
+
+Run all bundled fixtures in a single pass:
+
+```bash
+cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI/Examples/MarkdownShowcase
+swift run MarkdownShowcase --all
+```
+
 Run it with a specific fixture:
 
 ```bash
@@ -143,8 +171,12 @@ swift run MarkdownShowcase ../Fixtures/markdownview-sample.md
 Use this example when evaluating:
 
 - how headings, paragraphs, and blank lines read in a terminal
+- how blockquotes, lists, and fenced code blocks read in a terminal
 - whether longer Markdown samples remain visually stable
+- how mixed long-form documents feel when structure types alternate frequently
+- how narrow-terminal wrapping affects tables, code fences, and deep quote/list structures
 - whether fixture-driven presentation tweaks accidentally change perceived output quality
+- whether malformed / wide tables degrade cleanly instead of pretending to be valid tables
 
 If this example regresses, treat it as a presentation regression, not a public-API break by itself.
 

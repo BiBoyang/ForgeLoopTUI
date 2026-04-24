@@ -20,6 +20,7 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
     private var stableSource = ""
     private var stableRendered: [String] = []
     private let maxRenderedTableWidth = 80
+    private let thematicBreak = String(repeating: "─", count: 24)
 
     public init() {}
 
@@ -95,14 +96,19 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         var inCodeFence = false
         while index < lines.count {
             if isCodeFenceDelimiter(lines[index]) {
-                inCodeFence.toggle()
-                rendered.append(lines[index])
+                if inCodeFence {
+                    inCodeFence = false
+                    rendered.append(renderCodeFenceEnd())
+                } else {
+                    inCodeFence = true
+                    rendered.append(renderCodeFenceStart(lines[index]))
+                }
                 index += 1
                 continue
             }
 
             if inCodeFence {
-                rendered.append(lines[index])
+                rendered.append(renderCodeFenceContent(lines[index]))
                 index += 1
                 continue
             }
@@ -113,7 +119,7 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
                 continue
             }
 
-            rendered.append(lines[index])
+            rendered.append(renderInlineMarkdown(lines[index]))
             index += 1
         }
         return rendered
@@ -131,8 +137,12 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         guard let divider = parseDividerCells(lines[start + 1]), divider.count == headerCells.count else { return nil }
 
         var dataRows: [[String]] = []
+        var hasMismatchedColumnCount = false
         var cursor = start + 2
         while cursor < lines.count, let cells = parseTableCells(lines[cursor]) {
+            if cells.count != headerCells.count {
+                hasMismatchedColumnCount = true
+            }
             dataRows.append(cells)
             cursor += 1
         }
@@ -141,6 +151,11 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
 
         if !isFinal, cursor == lines.count, !endsWithNewline {
             return nil
+        }
+
+        if hasMismatchedColumnCount {
+            let degraded = Array(lines[start..<cursor])
+            return (degraded, cursor - start)
         }
 
         if let rendered = renderTable(header: headerCells, alignment: divider, rows: dataRows) {
@@ -154,6 +169,161 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
     private func isCodeFenceDelimiter(_ line: String) -> Bool {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         return trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~")
+    }
+
+    private func renderInlineMarkdown(_ line: String) -> String {
+        guard !line.isEmpty else { return line }
+        return renderStructuredLine(line) ?? line
+    }
+
+    private func renderStructuredLine(_ line: String) -> String? {
+        let leadingWhitespace = String(line.prefix(while: isIndentationCharacter))
+        let trimmed = line.dropFirst(leadingWhitespace.count)
+        guard !trimmed.isEmpty else { return nil }
+
+        let (quoteDepth, quoteContent) = parseBlockquotePrefix(trimmed)
+        if quoteDepth > 0 {
+            let quotePrefix = leadingWhitespace + String(repeating: "│ ", count: quoteDepth)
+            let rendered = renderDecoratedContent(
+                String(quoteContent),
+                indentationLevel: 0,
+                rawIndentPrefix: ""
+            ) ?? String(quoteContent)
+            return rendered.isEmpty ? quotePrefix.trimmingCharacters(in: .whitespaces) : quotePrefix + rendered
+        }
+
+        return renderDecoratedContent(
+            String(trimmed),
+            indentationLevel: indentationUnits(in: leadingWhitespace),
+            rawIndentPrefix: leadingWhitespace
+        )
+    }
+
+    private func renderDecoratedContent(
+        _ content: String,
+        indentationLevel: Int,
+        rawIndentPrefix: String
+    ) -> String? {
+        let leadingWhitespace = String(content.prefix(while: isIndentationCharacter))
+        let trimmed = content.dropFirst(leadingWhitespace.count)
+        guard !trimmed.isEmpty else { return nil }
+
+        let totalIndentationLevel = indentationLevel + indentationUnits(in: leadingWhitespace)
+        let normalizedIndent = String(repeating: "  ", count: totalIndentationLevel)
+        let body = String(trimmed)
+
+        if let heading = renderHeading(body) {
+            return rawIndentPrefix + leadingWhitespace + heading
+        }
+        if let listItem = renderListItem(body, nestingLevel: totalIndentationLevel) {
+            return normalizedIndent + listItem
+        }
+        if isThematicBreak(body) {
+            return rawIndentPrefix + leadingWhitespace + thematicBreak
+        }
+        return nil
+    }
+
+    private func renderHeading(_ line: String) -> String? {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard trimmed.hasPrefix("#") else { return nil }
+
+        let markerCount = trimmed.prefix(while: { $0 == "#" }).count
+        guard (1...6).contains(markerCount) else { return nil }
+        guard trimmed.count > markerCount else { return nil }
+
+        let markerEnd = trimmed.index(trimmed.startIndex, offsetBy: markerCount)
+        guard trimmed[markerEnd] == " " else { return nil }
+
+        let title = trimmed[trimmed.index(after: markerEnd)...].trimmingCharacters(in: .whitespaces)
+        guard !title.isEmpty else { return nil }
+
+        let prefix: String
+        switch markerCount {
+        case 1: prefix = "█ "
+        case 2: prefix = "▓ "
+        case 3: prefix = "▶ "
+        case 4: prefix = "▹ "
+        case 5: prefix = "• "
+        default: prefix = "· "
+        }
+        return prefix + title
+    }
+
+    private func parseBlockquotePrefix(_ content: Substring) -> (depth: Int, remainder: Substring) {
+        guard content.first == ">" else { return (0, content) }
+
+        var index = content.startIndex
+        var depth = 0
+        while index < content.endIndex, content[index] == ">" {
+            depth += 1
+            index = content.index(after: index)
+            if index < content.endIndex, content[index] == " " {
+                index = content.index(after: index)
+            }
+        }
+        return (depth, content[index...])
+    }
+
+    private func renderListItem(_ line: String, nestingLevel: Int) -> String? {
+        let trimmed = line[...]
+        guard !trimmed.isEmpty else { return nil }
+
+        if let marker = trimmed.first, (marker == "-" || marker == "+" || marker == "*") {
+            let nextIndex = trimmed.index(after: trimmed.startIndex)
+            guard nextIndex < trimmed.endIndex, trimmed[nextIndex] == " " else { return nil }
+            let content = String(trimmed[trimmed.index(after: nextIndex)...])
+            return "\(unorderedListBullet(for: nestingLevel)) \(content)"
+        }
+
+        let digits = trimmed.prefix(while: { $0.isNumber })
+        guard !digits.isEmpty else { return nil }
+        guard digits.endIndex < trimmed.endIndex else { return nil }
+        let separator = trimmed[digits.endIndex]
+        guard separator == "." || separator == ")" else { return nil }
+        let contentStart = trimmed.index(after: digits.endIndex)
+        guard contentStart < trimmed.endIndex, trimmed[contentStart] == " " else { return nil }
+        let content = String(trimmed[trimmed.index(after: contentStart)...])
+        return "\(digits). \(content)"
+    }
+
+    private func unorderedListBullet(for nestingLevel: Int) -> String {
+        let bullets = ["•", "◦", "▪", "▫"]
+        let index = max(0, nestingLevel) % bullets.count
+        return bullets[index]
+    }
+
+    private func indentationUnits(in whitespace: String) -> Int {
+        let width = whitespace.reduce(into: 0) { partialResult, character in
+            partialResult += character == "\t" ? 4 : 1
+        }
+        return max(0, width / 2)
+    }
+
+    private func isIndentationCharacter(_ character: Character) -> Bool {
+        character == " " || character == "\t"
+    }
+
+    private func isThematicBreak(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard trimmed.count >= 3 else { return false }
+        let uniqueCharacters = Set(trimmed)
+        guard uniqueCharacters.count == 1, let character = uniqueCharacters.first else { return false }
+        return character == "-" || character == "*" || character == "_"
+    }
+
+    private func renderCodeFenceStart(_ line: String) -> String {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        let language = trimmed.drop(while: { $0 == "`" || $0 == "~" }).trimmingCharacters(in: .whitespaces)
+        return language.isEmpty ? "┌─ code" : "┌─ code \(language)"
+    }
+
+    private func renderCodeFenceEnd() -> String {
+        "└─ end code"
+    }
+
+    private func renderCodeFenceContent(_ line: String) -> String {
+        line.isEmpty ? "│" : "│ \(line)"
     }
 
     private func splitRowCells(_ body: String) -> [String] {
