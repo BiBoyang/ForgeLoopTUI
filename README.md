@@ -26,7 +26,7 @@ It provides:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/BiBoyang/ForgeLoopTUI.git", from: "0.1.1")
+    .package(url: "https://github.com/BiBoyang/ForgeLoopTUI.git", from: "0.1.2")
 ],
 targets: [
     .target(
