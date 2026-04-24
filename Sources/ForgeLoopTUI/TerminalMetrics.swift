@@ -1,6 +1,6 @@
 import Foundation
 
-public func ansiStripped(_ text: String) -> String {
+func ansiStripped(_ text: String) -> String {
     var result = ""
     var index = text.startIndex
     while index < text.endIndex {
@@ -29,7 +29,7 @@ public func ansiStripped(_ text: String) -> String {
     return result
 }
 
-public func visibleWidth(_ text: String) -> Int {
+func visibleWidth(_ text: String) -> Int {
     let stripped = ansiStripped(text)
     var width = 0
     for scalar in stripped.unicodeScalars {
@@ -59,7 +59,7 @@ public func visibleWidth(_ text: String) -> Int {
     return width
 }
 
-public func physicalRows(for line: String, width: Int) -> Int {
+func physicalRows(for line: String, width: Int) -> Int {
     guard width > 0 else { return 1 }
     let vw = visibleWidth(line)
     if vw == 0 { return 1 }

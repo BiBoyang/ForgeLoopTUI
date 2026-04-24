@@ -54,7 +54,7 @@ func demo() {
     renderer.apply(.toolExecutionStart(toolCallId: "1", toolName: "read", args: "{\"path\":\"README.md\"}"))
     renderer.apply(.toolExecutionEnd(toolCallId: "1", toolName: "read", isError: false, summary: "Loaded 120 lines"))
 
-    tui.requestRender(lines: renderer.lines.all)
+    tui.requestRender(lines: renderer.transcriptLines)
 }
 ```
 
@@ -71,8 +71,11 @@ You can also use:
 
 - `appendFrame(lines:)` to write plain terminal output without retained-mode redraw
 - `resetRetainedFrame()` to drop inline redraw state before switching modes
+- `transcriptLines` as the stable read-only snapshot of rendered transcript lines
 - `StreamingTranscriptAppendState` to compute transcript deltas for append-only streaming UIs
 - `TranscriptRenderer.activeStreamingRange` to know which transcript range is still mutable
+
+Low-level logical-line and terminal-metric helpers are kept as implementation details; the stable consumer-facing API is centered on `TUI`, `TranscriptRenderer`, `RenderEvent`, `RenderMessage`, `Style`, `prefixedLogicalLines`, and `StreamingTranscriptAppendState`.
 
 ## Event Model
 
@@ -96,9 +99,12 @@ For a fuller testing workflow, see `TESTING.md`.
 
 ## Examples
 
-There is a runnable local example package under `Examples/MinimalStreamingDemo`.
+There are two runnable local example packages:
 
-Run it with:
+- `Examples/MinimalStreamingDemo`: stability / public-API smoke example
+- `Examples/MarkdownShowcase`: Markdown presentation example
+
+Run the smoke example with:
 
 ```bash
 cd Examples/MinimalStreamingDemo
@@ -112,11 +118,27 @@ cd Examples/MinimalStreamingDemo
 swift run MinimalStreamingDemo ../Fixtures/markdownview-sample.md
 ```
 
-The example shows:
+The smoke example shows:
 - a user prompt rendered once
 - assistant streaming with append-only transcript deltas
 - final flush on `messageEnd`
 - a simple tool start/end placeholder flow
+
+Run the Markdown presentation example with:
+
+```bash
+cd Examples/MarkdownShowcase
+swift run
+```
+
+Run it with a custom fixture:
+
+```bash
+cd Examples/MarkdownShowcase
+swift run MarkdownShowcase ../Fixtures/markdownview-sample.md
+```
+
+The Markdown example is intentionally separate from the smoke example so presentation tuning does not blur the public-API/stability contract.
 
 ## Related Projects
 

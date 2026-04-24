@@ -95,7 +95,7 @@ This verifies:
 
 `swift test` is not enough for a library. You should also verify that a consumer can use the public API naturally.
 
-Run the included example:
+Run the stability/smoke example:
 
 ```bash
 cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI/Examples/MinimalStreamingDemo
@@ -113,6 +113,7 @@ This smoke test verifies that the public API is sufficient to:
 
 - create a `TUI`
 - create a `TranscriptRenderer`
+- read rendered output through `TranscriptRenderer.transcriptLines`
 - create a `StreamingTranscriptAppendState`
 - render a user prompt once
 - stream assistant output with transcript deltas
@@ -121,7 +122,33 @@ This smoke test verifies that the public API is sufficient to:
 
 If this example breaks, treat it as a public API regression.
 
-## 4. Manual Terminal Smoke Test
+## 4. Markdown Presentation Example
+
+Presentation checks should be separate from the public-API smoke gate.
+
+Run the Markdown-focused example:
+
+```bash
+cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI/Examples/MarkdownShowcase
+swift run
+```
+
+Run it with a specific fixture:
+
+```bash
+cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI/Examples/MarkdownShowcase
+swift run MarkdownShowcase ../Fixtures/markdownview-sample.md
+```
+
+Use this example when evaluating:
+
+- how headings, paragraphs, and blank lines read in a terminal
+- whether longer Markdown samples remain visually stable
+- whether fixture-driven presentation tweaks accidentally change perceived output quality
+
+If this example regresses, treat it as a presentation regression, not a public-API break by itself.
+
+## 5. Manual Terminal Smoke Test
 
 For terminal libraries, some regressions are easier to see than to assert.
 
@@ -133,7 +160,7 @@ Do a quick manual smoke test when changing rendering behavior:
 4. confirm no unexpected ANSI junk is visible
 5. confirm prompt/tool lines are not duplicated
 
-If you add more advanced examples later, also test:
+When checking the examples manually, also test:
 
 - small terminal windows
 - long streaming output
@@ -163,7 +190,7 @@ Use it as a stable reference when visually checking:
 
 You can also copy external Markdown samples into `Examples/Fixtures/` and run them through the example.
 
-## 5. Recommended Workflow
+## 6. Recommended Workflow
 
 ### Routine changes
 
@@ -179,6 +206,8 @@ cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI
 swift test --filter TUITests
 cd Examples/MinimalStreamingDemo
 swift run
+cd ../MarkdownShowcase
+swift run
 ```
 
 ### Streaming planner changes
@@ -190,6 +219,15 @@ cd Examples/MinimalStreamingDemo
 swift run
 ```
 
+### Markdown presentation changes
+
+```bash
+cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI
+swift test
+cd Examples/MarkdownShowcase
+swift run
+```
+
 ### Release candidate check
 
 ```bash
@@ -197,18 +235,21 @@ cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI
 swift test
 cd Examples/MinimalStreamingDemo
 swift run
+cd ../MarkdownShowcase
+swift run
 ```
 
 Then do one manual terminal smoke pass.
 For the manual pass, keep `Examples/Fixtures/long-transcript.md` open as a reference text set.
 
-## 6. Failure Triage
+## 7. Failure Triage
 
 When something fails, use this rule of thumb:
 
 - `TUITests` failures usually mean rendering strategy or terminal semantics changed
 - `TranscriptRendererTests` failures usually mean transcript/event semantics changed
 - `StreamingTranscriptAppendStateTests` failures usually mean append-only streaming semantics changed
-- example failures usually mean a public API or integration contract regressed
+- `MinimalStreamingDemo` failures usually mean a public API or integration contract regressed
+- `MarkdownShowcase` failures usually mean presentation/sample wiring regressed
 
 Keep package tests and example behavior in sync.

@@ -12,7 +12,7 @@ final class TranscriptRendererTests: XCTestCase {
         renderer.apply(.messageUpdate(message: .assistant(text: "second version", errorMessage: nil)))
         renderer.apply(.messageEnd(message: .assistant(text: "second version", errorMessage: nil)))
 
-        let lines = renderer.lines.all
+        let lines = renderer.transcriptLines
         XCTAssertTrue(lines.contains("second version"))
         XCTAssertFalse(lines.contains("first version"))
     }
@@ -26,7 +26,7 @@ final class TranscriptRendererTests: XCTestCase {
         renderer.apply(.messageUpdate(message: .assistant(text: "only one", errorMessage: nil)))
         renderer.apply(.messageEnd(message: .assistant(text: "only one", errorMessage: nil)))
 
-        let lines = renderer.lines.all
+        let lines = renderer.transcriptLines
         XCTAssertTrue(lines.contains("only one"))
         XCTAssertFalse(lines.contains("line1"))
         XCTAssertFalse(lines.contains("line2"))
@@ -41,7 +41,7 @@ final class TranscriptRendererTests: XCTestCase {
         renderer.apply(.messageUpdate(message: .assistant(text: "hello", errorMessage: nil)))
         renderer.apply(.messageEnd(message: .assistant(text: "hello", errorMessage: nil)))
 
-        let lines = renderer.lines.all
+        let lines = renderer.transcriptLines
         let blankCount = lines.filter { $0.isEmpty }.count
         XCTAssertEqual(blankCount, 1)
     }
@@ -53,7 +53,7 @@ final class TranscriptRendererTests: XCTestCase {
         renderer.apply(.toolExecutionStart(toolCallId: "tc-1", toolName: "read_file", args: "{}"))
         renderer.apply(.toolExecutionEnd(toolCallId: "tc-1", toolName: "read_file", isError: false, summary: nil))
 
-        let lines = renderer.lines.all
+        let lines = renderer.transcriptLines
         XCTAssertTrue(lines.contains("● read_file({})"))
         XCTAssertTrue(lines.contains("⎿ done"))
         XCTAssertFalse(lines.contains("⎿ running..."))
@@ -64,7 +64,7 @@ final class TranscriptRendererTests: XCTestCase {
         renderer.apply(.toolExecutionStart(toolCallId: "tc-2", toolName: "bad_tool", args: "{}"))
         renderer.apply(.toolExecutionEnd(toolCallId: "tc-2", toolName: "bad_tool", isError: true, summary: nil))
 
-        let lines = renderer.lines.all
+        let lines = renderer.transcriptLines
         XCTAssertTrue(lines.contains("● bad_tool({})"))
         XCTAssertTrue(lines.contains("⎿ failed"))
         XCTAssertFalse(lines.contains("⎿ running..."))
@@ -78,7 +78,7 @@ final class TranscriptRendererTests: XCTestCase {
         renderer.apply(.toolExecutionStart(toolCallId: "b", toolName: "toolB", args: "2"))
         renderer.apply(.toolExecutionEnd(toolCallId: "a", toolName: "toolA", isError: false, summary: nil))
 
-        let lines = renderer.lines.all
+        let lines = renderer.transcriptLines
         XCTAssertTrue(lines.contains("⎿ done"))
         XCTAssertTrue(lines.contains("⎿ running..."))
         XCTAssertEqual(lines.filter { $0 == "⎿ done" }.count, 1)
@@ -93,7 +93,7 @@ final class TranscriptRendererTests: XCTestCase {
         renderer.apply(.toolExecutionStart(toolCallId: "tc-long", toolName: "read", args: "{}"))
         renderer.apply(.toolExecutionEnd(toolCallId: "tc-long", toolName: "read", isError: false, summary: veryLong))
 
-        let lines = renderer.lines.all
+        let lines = renderer.transcriptLines
         let resultLine = lines.first { $0.hasPrefix("⎿ done:") }
         XCTAssertNotNil(resultLine)
         XCTAssertTrue(resultLine!.hasSuffix("..."), "Truncated summary should end with ...")
@@ -108,7 +108,7 @@ final class TranscriptRendererTests: XCTestCase {
         renderer.apply(.toolExecutionStart(toolCallId: "tc-short", toolName: "read", args: "{}"))
         renderer.apply(.toolExecutionEnd(toolCallId: "tc-short", toolName: "read", isError: false, summary: shortSummary))
 
-        let lines = renderer.lines.all
+        let lines = renderer.transcriptLines
         XCTAssertTrue(lines.contains("⎿ done: \(shortSummary)"))
     }
 
@@ -141,7 +141,7 @@ final class TranscriptRendererTests: XCTestCase {
         renderer.apply(.messageUpdate(message: .assistant(text: "one\ntwo\nthree\nfour", errorMessage: nil)))
         renderer.apply(.messageEnd(message: .assistant(text: "one\ntwo\nthree\nfour", errorMessage: nil)))
 
-        let lines = renderer.lines.all.filter { !$0.isEmpty }
+        let lines = renderer.transcriptLines.filter { !$0.isEmpty }
         XCTAssertEqual(lines, ["one", "two", "three", "four"])
     }
 
@@ -152,7 +152,7 @@ final class TranscriptRendererTests: XCTestCase {
         renderer.apply(.messageStart(message: .assistant(text: "", errorMessage: nil)))
         renderer.apply(.messageEnd(message: .assistant(text: "", errorMessage: "OpenAI Chat Completions HTTP 404: Not Found")))
 
-        let lines = renderer.lines.all
+        let lines = renderer.transcriptLines
         XCTAssertTrue(lines.contains("[error] OpenAI Chat Completions HTTP 404: Not Found"))
     }
 
@@ -161,6 +161,6 @@ final class TranscriptRendererTests: XCTestCase {
 
         renderer.apply(.messageStart(message: .user("line1\nline2\nline3")))
 
-        XCTAssertEqual(renderer.lines.all, ["❯ line1", "line2", "line3", ""])
+        XCTAssertEqual(renderer.transcriptLines, ["❯ line1", "line2", "line3", ""])
     }
 }

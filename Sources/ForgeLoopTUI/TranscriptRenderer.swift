@@ -2,7 +2,7 @@ import Foundation
 
 @MainActor
 public final class TranscriptRenderer {
-    public let lines: TranscriptBuffer
+    let lines: TranscriptBuffer
     private var streamingRange: Range<Int>?
     private var pendingTools: [String: Int] = [:]
 
@@ -14,6 +14,8 @@ public final class TranscriptRenderer {
     public init() {
         self.lines = TranscriptBuffer()
     }
+
+    public var transcriptLines: [String] { lines.all }
 
     public func apply(_ event: RenderEvent) {
         switch event {
@@ -93,18 +95,18 @@ public final class TranscriptRenderer {
 }
 
 @MainActor
-public final class TranscriptBuffer {
-    public init() {}
+final class TranscriptBuffer {
+    init() {}
 
-    public private(set) var all: [String] = []
+    private(set) var all: [String] = []
 
-    public var count: Int { all.count }
+    var count: Int { all.count }
 
-    public func append(_ line: String) {
+    func append(_ line: String) {
         all.append(line)
     }
 
-    public func replace(range: Range<Int>, with lines: [String]) {
+    func replace(range: Range<Int>, with lines: [String]) {
         let lower = max(0, min(range.lowerBound, all.count))
         let upper = max(lower, min(range.upperBound, all.count))
         all.replaceSubrange(lower..<upper, with: lines)

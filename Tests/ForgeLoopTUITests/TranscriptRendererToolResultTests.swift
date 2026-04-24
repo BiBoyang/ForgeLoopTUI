@@ -11,7 +11,7 @@ final class TranscriptRendererToolResultTests: XCTestCase {
         renderer.apply(.toolExecutionStart(toolCallId: "tc-1", toolName: "read", args: "{\"path\":\"file.txt\"}"))
         renderer.apply(.toolExecutionEnd(toolCallId: "tc-1", toolName: "read", isError: false, summary: "hello world"))
 
-        let lines = renderer.lines.all
+        let lines = renderer.transcriptLines
         XCTAssertTrue(lines.contains("● read({\"path\":\"file.txt\"})"))
         XCTAssertTrue(lines.contains("⎿ done: hello world"))
         XCTAssertFalse(lines.contains("⎿ running..."))
@@ -24,7 +24,7 @@ final class TranscriptRendererToolResultTests: XCTestCase {
         renderer.apply(.toolExecutionStart(toolCallId: "tc-2", toolName: "read", args: "{\"path\":\"missing\"}"))
         renderer.apply(.toolExecutionEnd(toolCallId: "tc-2", toolName: "read", isError: true, summary: "File not found"))
 
-        let lines = renderer.lines.all
+        let lines = renderer.transcriptLines
         XCTAssertTrue(lines.contains("⎿ failed: File not found"))
         XCTAssertFalse(lines.contains("⎿ running..."))
     }
@@ -36,7 +36,7 @@ final class TranscriptRendererToolResultTests: XCTestCase {
         renderer.apply(.toolExecutionStart(toolCallId: "tc-3", toolName: "write", args: "{}"))
         renderer.apply(.toolExecutionEnd(toolCallId: "tc-3", toolName: "write", isError: false, summary: nil))
 
-        let lines = renderer.lines.all
+        let lines = renderer.transcriptLines
         XCTAssertTrue(lines.contains("⎿ done"))
         XCTAssertFalse(lines.contains("⎿ done: \"\""))
     }
@@ -48,7 +48,7 @@ final class TranscriptRendererToolResultTests: XCTestCase {
         renderer.apply(.toolExecutionStart(toolCallId: "tc-4", toolName: "bash", args: "{}"))
         renderer.apply(.toolExecutionEnd(toolCallId: "tc-4", toolName: "bash", isError: false, summary: "(no output)"))
 
-        let lines = renderer.lines.all
+        let lines = renderer.transcriptLines
         XCTAssertTrue(lines.contains("⎿ done: (no output)"))
     }
 
@@ -60,7 +60,7 @@ final class TranscriptRendererToolResultTests: XCTestCase {
         renderer.apply(.toolExecutionStart(toolCallId: "tc-5", toolName: "read", args: "{}"))
         renderer.apply(.toolExecutionEnd(toolCallId: "tc-5", toolName: "read", isError: false, summary: longSummary))
 
-        let lines = renderer.lines.all
+        let lines = renderer.transcriptLines
         XCTAssertTrue(lines.contains("⎿ done: \(longSummary)"))
     }
 
@@ -75,7 +75,7 @@ final class TranscriptRendererToolResultTests: XCTestCase {
         renderer.apply(.toolExecutionEnd(toolCallId: "a", toolName: "read", isError: false, summary: "file content"))
         renderer.apply(.toolExecutionEnd(toolCallId: "b", toolName: "write", isError: true, summary: "permission denied"))
 
-        let lines = renderer.lines.all
+        let lines = renderer.transcriptLines
         XCTAssertTrue(lines.contains("⎿ done: file content"))
         XCTAssertTrue(lines.contains("⎿ failed: permission denied"))
         XCTAssertTrue(lines.contains("⎿ running..."))
@@ -101,7 +101,7 @@ final class TranscriptRendererToolResultTests: XCTestCase {
         renderer.apply(.messageUpdate(message: .assistant(text: "Done", errorMessage: nil)))
         renderer.apply(.messageEnd(message: .assistant(text: "Done", errorMessage: nil)))
 
-        let lines = renderer.lines.all
+        let lines = renderer.transcriptLines
         XCTAssertTrue(lines.contains("Here is the result:"))
         XCTAssertTrue(lines.contains("⎿ done: data"))
         XCTAssertTrue(lines.contains("Done"))
@@ -120,7 +120,7 @@ final class TranscriptRendererToolResultTests: XCTestCase {
         // AgentLoop should only send first line, but renderer should handle gracefully
         renderer.apply(.toolExecutionEnd(toolCallId: "tc-8", toolName: "bash", isError: false, summary: "first line"))
 
-        let lines = renderer.lines.all
+        let lines = renderer.transcriptLines
         XCTAssertTrue(lines.contains("⎿ done: first line"))
     }
 
@@ -129,7 +129,7 @@ final class TranscriptRendererToolResultTests: XCTestCase {
         renderer.apply(.toolExecutionStart(toolCallId: "tc-9", toolName: "bash", args: "{}"))
         renderer.apply(.toolExecutionEnd(toolCallId: "tc-9", toolName: "bash", isError: false, summary: "line1\nline2"))
 
-        let lines = renderer.lines.all
+        let lines = renderer.transcriptLines
         XCTAssertTrue(lines.contains("⎿ done: line1"))
         XCTAssertTrue(lines.contains("⎿ done: line2"))
     }
