@@ -5,14 +5,16 @@ public final class TranscriptRenderer {
     let lines: TranscriptBuffer
     private var streamingRange: Range<Int>?
     private var pendingTools: [String: Int] = [:]
+    private let markdownEngine: MarkdownEngine
 
     public var pendingToolCount: Int { pendingTools.count }
     public var activeStreamingRange: Range<Int>? { streamingRange }
 
     private let maxSummaryRenderLength = 120
 
-    public init() {
+    public init(markdownEngine: MarkdownEngine = StreamingMarkdownEngine()) {
         self.lines = TranscriptBuffer()
+        self.markdownEngine = markdownEngine
     }
 
     public var transcriptLines: [String] { lines.all }
@@ -29,16 +31,18 @@ public final class TranscriptRenderer {
             case .assistant:
                 let start = lines.count
                 streamingRange = start..<start
+                markdownEngine.reset()
             case .tool:
                 break
             }
         case .messageUpdate(let message):
             guard case .assistant = message else { break }
-            replaceStreaming(with: renderAssistantLines(message))
+            replaceStreaming(with: renderAssistantLines(message, isFinal: false))
         case .messageEnd(let message):
             guard case .assistant = message else { break }
-            replaceStreaming(with: renderAssistantLines(message))
+            replaceStreaming(with: renderAssistantLines(message, isFinal: true))
             streamingRange = nil
+            markdownEngine.reset()
             append("")
         case .toolExecutionStart(let toolCallId, let toolName, let args):
             append("● \(toolName)(\(args))")
@@ -64,13 +68,13 @@ public final class TranscriptRenderer {
         return splitLogicalLines(summary).map(truncateIfNeeded)
     }
 
-    private func renderAssistantLines(_ message: RenderMessage) -> [String] {
+    private func renderAssistantLines(_ message: RenderMessage, isFinal: Bool) -> [String] {
         guard case .assistant(let text, let errorMessage) = message else {
             return [""]
         }
 
         if !text.isEmpty {
-            return splitLogicalLines(text)
+            return markdownEngine.render(text: text, isFinal: isFinal)
         }
 
         if
