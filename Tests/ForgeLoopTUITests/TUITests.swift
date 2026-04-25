@@ -63,4 +63,17 @@ final class TUITests: XCTestCase {
 
         XCTAssertEqual(spy.outputs.last, "new\r\n")
     }
+
+    func testInlineSameFrameCursorOffsetMovesRelative() {
+        let spy = OutputSpy()
+        let tui = TUI(strategy: .inlineAnchor, writer: spy.writer)
+
+        tui.requestRender(lines: ["prompt"], cursorOffset: 2)
+        tui.requestRender(lines: ["prompt"], cursorOffset: 1)
+        tui.requestRender(lines: ["prompt"], cursorOffset: 3)
+
+        XCTAssertEqual(spy.outputs[0], "prompt\u{1B}[2D")
+        XCTAssertEqual(spy.outputs[1], "\u{1B}[1C")
+        XCTAssertEqual(spy.outputs[2], "\u{1B}[2D")
+    }
 }

@@ -54,6 +54,7 @@ public final class TUI: @unchecked Sendable {
     private var previousLines: [String] = []
     private var lastFramePhysicalRows: Int = 0
     private var lastCursorAnchored: Bool = false
+    private var lastCursorOffset: Int = 0
     private let ttyNewline = "\r\n"
 
     public init(
@@ -132,6 +133,7 @@ public final class TUI: @unchecked Sendable {
             previousLines = []
             lastFramePhysicalRows = 0
             lastCursorAnchored = false
+            lastCursorOffset = 0
         }
     }
 
@@ -140,6 +142,7 @@ public final class TUI: @unchecked Sendable {
             previousLines = lines
             lastFramePhysicalRows = totalPhysicalRows(for: lines)
             lastCursorAnchored = cursorOffset != nil
+            lastCursorOffset = cursorOffset ?? 0
         }
 
         let anchored = cursorOffset != nil
@@ -155,14 +158,16 @@ public final class TUI: @unchecked Sendable {
     }
 
     private func renderInline(lines: [String], cursorOffset: Int?) {
-        let (prev, prevRows, wasAnchored) = lock.withLock {
+        let (prev, prevRows, wasAnchored, previousCursorOffset) = lock.withLock {
             let oldPrev = previousLines
             let oldRows = lastFramePhysicalRows
             let anchored = lastCursorAnchored
+            let oldCursorOffset = lastCursorOffset
             previousLines = lines
             lastFramePhysicalRows = totalPhysicalRows(for: lines)
             lastCursorAnchored = cursorOffset != nil
-            return (oldPrev, oldRows, anchored)
+            lastCursorOffset = cursorOffset ?? 0
+            return (oldPrev, oldRows, anchored, oldCursorOffset)
         }
 
         var output = ""
@@ -179,8 +184,16 @@ public final class TUI: @unchecked Sendable {
             let anchorChanged = wasAnchored != anchored
 
             if firstDiff == nil, !anchorChanged {
-                if let offset = cursorOffset, offset > 0 {
-                    output += "\u{1B}[\(offset)D"
+                if let offset = cursorOffset {
+                    let delta = offset - previousCursorOffset
+                    if delta > 0 {
+                        output += "\u{1B}[\(delta)D"
+                    } else if delta < 0 {
+                        output += "\u{1B}[\(-delta)C"
+                    }
+                }
+
+                if !output.isEmpty {
                     writer(output)
                 }
                 return
