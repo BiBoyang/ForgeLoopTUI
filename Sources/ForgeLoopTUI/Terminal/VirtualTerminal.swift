@@ -10,15 +10,24 @@ import Foundation
 /// - `ESC[2K`（清除当前行）
 ///
 /// 网格/光标/滚屏行为将在后续迭代继续深化。
+/// 虚拟终端单元格：字符及其当前 SGR 样式。
+public struct Cell: Sendable, Equatable {
+    public var character: Character
+    public var style: SGRState
+}
+
 public final class VirtualTerminal: Terminal, @unchecked Sendable {
     private let lock = NSLock()
     public private(set) var width: Int
     public private(set) var height: Int
     public private(set) var cursorRow: Int
     public private(set) var cursorCol: Int
-    private var grid: [[Character]]
+    private var grid: [[Cell]]
+    private var currentStyle = SGRState()
+    private var parser = ANSIParser()
 
     public var isTTY: Bool { false }
+    public var capability: TerminalCapability { .truecolor }
 
     public init(width: Int = 80, height: Int = 24) {
         let safeWidth = max(1, width)
@@ -27,49 +36,26 @@ public final class VirtualTerminal: Terminal, @unchecked Sendable {
         self.height = safeHeight
         self.cursorRow = 0
         self.cursorCol = 0
-        self.grid = (0..<safeHeight).map { _ in Array(repeating: " ", count: safeWidth) }
+        let blankCell = Cell(character: " ", style: SGRState())
+        self.grid = (0..<safeHeight).map { _ in Array(repeating: blankCell, count: safeWidth) }
     }
 
     public func write(_ text: String) {
         lock.withLock {
-            let scalars = text.unicodeScalars
-            var i = scalars.startIndex
-            while i < scalars.endIndex {
-                let scalar = scalars[i]
-                if scalar == "\u{1B}" {
-                    i = scalars.index(after: i)
-                    if i < scalars.endIndex && scalars[i] == "[" {
-                        i = scalars.index(after: i)
-                        var paramString = ""
-                        // 持续读取参数字节（0x30-0x3F：数字、;、<、=、>、?）
-                        while i < scalars.endIndex {
-                            let c = scalars[i]
-                            if (c >= "0" && c <= "9") || c == ";" || (c >= "<" && c <= "?") {
-                                paramString.append(Character(c))
-                                i = scalars.index(after: i)
-                            } else {
-                                break
-                            }
+            for scalar in text.unicodeScalars {
+                parser.feed(scalar) { [self] event in
+                    switch event {
+                    case .text(let char):
+                        if char == "\r" {
+                            cursorCol = 0
+                        } else if char == "\n" {
+                            moveCursorDown()
+                        } else {
+                            writeCharacter(char)
                         }
-                        if i < scalars.endIndex {
-                            let command = scalars[i]
-                            // final byte 范围 0x40-0x7E，未支持也要消费掉
-                            if command >= "@" && command <= "~" {
-                                let params = paramString.split(separator: ";").compactMap { Int($0) }
-                                handleCSI(params: params, command: Character(command))
-                                i = scalars.index(after: i)
-                            }
-                        }
+                    case .csi(let params, _, let command):
+                        handleCSI(params: params, command: command)
                     }
-                } else if scalar == "\r" {
-                    cursorCol = 0
-                    i = scalars.index(after: i)
-                } else if scalar == "\n" {
-                    moveCursorDown()
-                    i = scalars.index(after: i)
-                } else {
-                    writeCharacter(Character(scalar))
-                    i = scalars.index(after: i)
                 }
             }
         }
@@ -78,7 +64,7 @@ public final class VirtualTerminal: Terminal, @unchecked Sendable {
     /// 当前屏幕内容的紧凑文本表示（去除尾部空格与空行）。
     public var buffer: String {
         lock.withLock {
-            var lines = grid.map { String($0) }
+            var lines = grid.map { row in String(row.map(\.character)) }
             for i in lines.indices {
                 while lines[i].hasSuffix(" ") {
                     lines[i].removeLast()
@@ -94,7 +80,14 @@ public final class VirtualTerminal: Terminal, @unchecked Sendable {
     /// 原始屏幕行（包含空格，长度固定为 `width`）。
     public var screenLines: [String] {
         lock.withLock {
-            grid.map { String($0) }
+            grid.map { row in String(row.map(\.character)) }
+        }
+    }
+
+    /// 原始屏幕单元格（包含样式信息）。
+    public var screenCells: [[Cell]] {
+        lock.withLock {
+            grid
         }
     }
 
@@ -108,15 +101,16 @@ public final class VirtualTerminal: Terminal, @unchecked Sendable {
             let safeWidth = max(1, newWidth)
             let safeHeight = max(1, newHeight)
 
-            var newGrid: [[Character]] = []
+            let blankCell = Cell(character: " ", style: SGRState())
+            var newGrid: [[Cell]] = []
             for row in 0..<safeHeight {
                 if row < oldHeight {
                     let oldRow = grid[row]
                     let preserved = Array(oldRow.prefix(min(oldWidth, safeWidth)))
-                    let padding: [Character] = Array(repeating: " ", count: max(0, safeWidth - oldWidth))
+                    let padding = Array(repeating: blankCell, count: max(0, safeWidth - oldWidth))
                     newGrid.append(preserved + padding)
                 } else {
-                    newGrid.append(Array(repeating: " ", count: safeWidth))
+                    newGrid.append(Array(repeating: blankCell, count: safeWidth))
                 }
             }
 
@@ -139,7 +133,7 @@ public final class VirtualTerminal: Terminal, @unchecked Sendable {
 
     private func writeCharacter(_ char: Character) {
         guard cursorRow >= 0 && cursorRow < height && cursorCol >= 0 && cursorCol < width else { return }
-        grid[cursorRow][cursorCol] = char
+        grid[cursorRow][cursorCol] = Cell(character: char, style: currentStyle)
         cursorCol += 1
         if cursorCol >= width {
             cursorCol = 0
@@ -166,8 +160,10 @@ public final class VirtualTerminal: Terminal, @unchecked Sendable {
                 clearScreen()
             }
         case "H":
-            cursorRow = 0
-            cursorCol = 0
+            let row = params.count > 0 ? params[0] : 1
+            let col = params.count > 1 ? params[1] : 1
+            cursorRow = max(0, min(height - 1, row - 1))
+            cursorCol = max(0, min(width - 1, col - 1))
         case "A":
             cursorRow = max(0, cursorRow - (params.first ?? 1))
         case "B":
@@ -180,26 +176,32 @@ public final class VirtualTerminal: Terminal, @unchecked Sendable {
             if params.first == 2 {
                 clearCurrentLine()
             }
+        case "m":
+            currentStyle.apply(params)
         default:
-            break // 忽略未支持的序列（如 SGR m）
+            break // 忽略未支持的序列
         }
     }
 
     private func clearScreen() {
-        grid = (0..<height).map { _ in Array(repeating: " ", count: width) }
+        let blankCell = Cell(character: " ", style: SGRState())
+        grid = (0..<height).map { _ in Array(repeating: blankCell, count: width) }
         cursorRow = 0
         cursorCol = 0
+        currentStyle.reset()
     }
 
     private func clearCurrentLine() {
         guard cursorRow >= 0 && cursorRow < height else { return }
+        let blankCell = Cell(character: " ", style: SGRState())
         for c in 0..<width {
-            grid[cursorRow][c] = " "
+            grid[cursorRow][c] = blankCell
         }
     }
 
     private func scrollUp() {
+        let blankCell = Cell(character: " ", style: SGRState())
         grid.removeFirst()
-        grid.append(Array(repeating: " ", count: width))
+        grid.append(Array(repeating: blankCell, count: width))
     }
 }

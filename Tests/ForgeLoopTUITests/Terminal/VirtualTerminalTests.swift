@@ -181,4 +181,39 @@ final class VirtualTerminalTests: XCTestCase {
         XCTAssertEqual(vt.cursorRow, 0)
         XCTAssertEqual(vt.cursorCol, 0)
     }
+
+    // MARK: - Cursor Position (CUP)
+
+    func testCursorPositionWithRowCol() {
+        let vt = VirtualTerminal(width: 10, height: 5)
+        vt.write("\u{1B}[3;4H")
+        XCTAssertEqual(vt.cursorRow, 2)
+        XCTAssertEqual(vt.cursorCol, 3)
+    }
+
+    func testCursorPositionDefaultsToHome() {
+        let vt = VirtualTerminal(width: 10, height: 5)
+        vt.write("hello")
+        XCTAssertEqual(vt.cursorRow, 0)
+        XCTAssertEqual(vt.cursorCol, 5)
+
+        vt.write("\u{1B}[H")
+        XCTAssertEqual(vt.cursorRow, 0)
+        XCTAssertEqual(vt.cursorCol, 0)
+    }
+
+    func testCursorPositionClampsToBounds() {
+        let vt = VirtualTerminal(width: 5, height: 3)
+        vt.write("\u{1B}[100;200H")
+        XCTAssertEqual(vt.cursorRow, 2)
+        XCTAssertEqual(vt.cursorCol, 4)
+    }
+
+    func testCursorPositionPartialH() {
+        let vt = VirtualTerminal(width: 10, height: 5)
+        vt.write("\u{1B}[2")
+        vt.write(";5H")
+        XCTAssertEqual(vt.cursorRow, 1)
+        XCTAssertEqual(vt.cursorCol, 4)
+    }
 }

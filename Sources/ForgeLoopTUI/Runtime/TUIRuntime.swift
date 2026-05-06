@@ -2,6 +2,7 @@ import Foundation
 /// 将旧版 `FrameWriter` 桥接到 `Terminal` 协议的内部适配器。
 private struct WriterTerminal: Terminal {
     let isTTY: Bool
+    let capability: TerminalCapability
     let writer: FrameWriter
 
     func write(_ text: String) {
@@ -52,7 +53,7 @@ public final class TUI: @unchecked Sendable {
             self.isTTY = isTTY ?? terminal.isTTY
         } else if let writer {
             let resolvedTTY = isTTY ?? true
-            self.terminal = WriterTerminal(isTTY: resolvedTTY, writer: writer)
+            self.terminal = WriterTerminal(isTTY: resolvedTTY, capability: .truecolor, writer: writer)
             self.isTTY = resolvedTTY
         } else {
             let resolvedTTY = isTTY ?? true

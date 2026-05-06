@@ -41,6 +41,7 @@ func writeToStandardOutput(_ text: String) {
 /// 默认终端实现：直接写入标准输出（stdout）。
 public struct StdoutTerminal: Terminal {
     public var isTTY: Bool { true }
+    public var capability: TerminalCapability { .truecolor }
 
     public init() {}
 
