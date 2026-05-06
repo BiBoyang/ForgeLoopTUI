@@ -137,18 +137,33 @@ Definition of Done:
 
 ## M2 - ANSI Subsystem Hardening (5-7 days)
 
+> Status: completed (merged)
+>
+> Completed items:
+> - `ANSIParser` state machine with 5 states (ground/escape/csiEntry/csiParam/csiIntermediate), chunk-safe across `write()` calls
+> - Full CSI byte categories: param (0x30-0x3F), intermediate (0x20-0x2F), final (0x40-0x7E)
+> - `VirtualTerminal` cursor positioning (`ESC[row;colH`) and `Cell` model with `SGRState` tracking
+> - SGR support: reset, bold, dim, standard/bright fg/bg (30-37, 40-47, 90-97, 100-107)
+> - 256-color (`indexed`) and 24-bit TrueColor (`rgb`) with safe incomplete-param handling
+> - `TerminalCapability` enum (plain/ansi16/ansi256/truecolor) wired through `Terminal` protocol
+> - Style degradation chain: rgb → indexed → standard/bright → plain, capability-driven rendering
+> - End-to-end tests: parser (18), style tracking (16), capability degradation (12), render chain (9)
+>
+> Deferred:
+> - unified width/truncation APIs across runtime paths → M4/M5
+
 Deliverables:
 
-1. state-machine ANSI parser with chunk-safe streaming
-2. SGR support for style reset, fg/bg colors, and attributes
-3. color profile support: plain, 16-color, 256-color, truecolor
-4. unified width/truncation APIs across runtime paths
+1. state-machine ANSI parser with chunk-safe streaming ✅
+2. SGR support for style reset, fg/bg colors, and attributes ✅
+3. color profile support: plain, 16-color, 256-color, truecolor ✅
+4. unified width/truncation APIs across runtime paths ⏸️
 
 Definition of Done:
 
-1. mixed ANSI + CJK + emoji width tests are stable
-2. parser passes partial-sequence replay tests
-3. style downgrade policy works in capability-restricted terminals
+1. mixed ANSI + CJK + emoji width tests are stable ✅
+2. parser passes partial-sequence replay tests ✅
+3. style downgrade policy works in capability-restricted terminals ✅
 
 ## M3 - RawStdin and Input Pipeline (6-8 days)
 
