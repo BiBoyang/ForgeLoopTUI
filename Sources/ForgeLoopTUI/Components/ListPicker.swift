@@ -84,36 +84,38 @@ public struct ListPickerState: Sendable, Equatable {
 
 public struct ListPickerRenderer: Sendable {
     public let styleMode: Style.RenderingMode
+    public let capability: TerminalCapability
     private let modalRenderer: ModalRenderer
 
-    public init(styleMode: Style.RenderingMode = .automatic) {
+    public init(styleMode: Style.RenderingMode = .automatic, capability: TerminalCapability = .truecolor) {
         self.styleMode = styleMode
-        self.modalRenderer = ModalRenderer(styleMode: styleMode)
+        self.capability = capability
+        self.modalRenderer = ModalRenderer(styleMode: styleMode, capability: capability)
     }
 
     public func render(state: ListPickerState) -> [String] {
         var body: [String] = []
 
         if let subtitle = state.subtitle, !subtitle.isEmpty {
-            body.append(Style.dimmed(subtitle, mode: styleMode))
+            body.append(Style.dimmed(subtitle, mode: styleMode, capability: capability))
             if !state.items.isEmpty {
                 body.append("")
             }
         }
 
         if state.items.isEmpty {
-            body.append(Style.dimmed("(no options)", mode: styleMode))
+            body.append(Style.dimmed("(no options)", mode: styleMode, capability: capability))
         } else {
             for (index, item) in state.items.enumerated() {
                 let symbol = index == state.selectedIndex ? "● " : "○ "
                 let titleLine = symbol + item.title
                 if index == state.selectedIndex {
-                    body.append(Style.selection(titleLine, mode: styleMode))
+                    body.append(Style.selection(titleLine, mode: styleMode, capability: capability))
                 } else {
                     body.append(titleLine)
                 }
                 if let subtitle = item.subtitle, !subtitle.isEmpty {
-                    body.append(Style.dimmed("  \(subtitle)", mode: styleMode))
+                    body.append(Style.dimmed("  \(subtitle)", mode: styleMode, capability: capability))
                 }
             }
         }

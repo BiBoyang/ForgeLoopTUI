@@ -28,12 +28,12 @@ public enum RenderEvent: Sendable, Equatable {
 public struct LegacyRenderEventAdapter {
     private static let blockId = "__legacy_block"
 
-    public static func adapt(_ event: RenderEvent) -> CoreRenderEvent {
+    public static func adapt(_ event: RenderEvent, capability: TerminalCapability = .truecolor) -> CoreRenderEvent {
         switch event {
         case .messageStart(let message):
             switch message {
             case .user(let text):
-                return .insert(lines: prefixedLogicalLines(prefix: Style.user("❯ "), text: text) + [""])
+                return .insert(lines: prefixedLogicalLines(prefix: Style.user("❯ ", capability: capability), text: text) + [""])
             case .assistant:
                 return .blockStart(id: blockId)
             case .tool:
@@ -44,17 +44,17 @@ public struct LegacyRenderEventAdapter {
             guard case .assistant(let text, let thinking, _) = message else {
                 return .insert(lines: [])
             }
-            return .blockUpdate(id: blockId, lines: formatAssistant(text: text, thinking: thinking))
+            return .blockUpdate(id: blockId, lines: formatAssistant(text: text, thinking: thinking, capability: capability))
 
         case .messageEnd(let message):
             switch message {
             case .user(let text):
-                return .insert(lines: prefixedLogicalLines(prefix: Style.user("❯ "), text: text) + [""])
+                return .insert(lines: prefixedLogicalLines(prefix: Style.user("❯ ", capability: capability), text: text) + [""])
             case .assistant(let text, let thinking, let errorMessage):
                 let footer = text.isEmpty ? errorMessage : nil
                 return .blockEnd(
                     id: blockId,
-                    lines: formatAssistant(text: text, thinking: thinking),
+                    lines: formatAssistant(text: text, thinking: thinking, capability: capability),
                     footer: footer
                 )
             case .tool:
@@ -76,13 +76,13 @@ public struct LegacyRenderEventAdapter {
         }
     }
 
-    private static func formatAssistant(text: String, thinking: String?) -> [String] {
+    private static func formatAssistant(text: String, thinking: String?, capability: TerminalCapability) -> [String] {
         var result: [String] = []
 
         if let thinking, !thinking.isEmpty {
             let firstLine = thinking.split(separator: "\n", omittingEmptySubsequences: false).first.map(String.init) ?? thinking
             let prefix = thinking.contains("\n") ? "💭 \(firstLine) …" : "💭 \(firstLine)"
-            result.append(Style.dimmed(prefix))
+            result.append(Style.dimmed(prefix, capability: capability))
         }
 
         if !text.isEmpty {
