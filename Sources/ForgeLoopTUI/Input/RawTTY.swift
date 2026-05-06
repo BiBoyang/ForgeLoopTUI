@@ -41,6 +41,10 @@ public final class RawTTY: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
+        guard originalTermios == nil else {
+            throw RawTTYError.alreadyEntered
+        }
+
         guard isatty(fd) == 1 else {
             throw RawTTYError.notATTY(fd: fd)
         }
@@ -85,6 +89,7 @@ public final class RawTTY: @unchecked Sendable {
 /// RawTTY 错误类型。
 public enum RawTTYError: Error, Equatable {
     case notATTY(fd: Int32)
+    case alreadyEntered
     case unableToGetAttributes(errno: Int32)
     case unableToSetAttributes(errno: Int32)
 }

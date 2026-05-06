@@ -147,7 +147,7 @@ Definition of Done:
 > - 256-color (`indexed`) and 24-bit TrueColor (`rgb`) with safe incomplete-param handling
 > - `TerminalCapability` enum (plain/ansi16/ansi256/truecolor) wired through `Terminal` protocol
 > - Style degradation chain: rgb → indexed → standard/bright → plain, capability-driven rendering
-> - End-to-end tests: parser (18), style tracking (16), capability degradation (12), render chain (9)
+> - End-to-end tests: parser (18), style tracking (16), capability degradation (12), render chain (10)
 >
 > Deferred:
 > - unified width/truncation APIs across runtime paths → M4/M5

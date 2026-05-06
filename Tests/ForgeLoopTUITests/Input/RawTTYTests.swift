@@ -61,4 +61,19 @@ struct RawTTYTests {
         }
         // restore() was called via defer even though body threw
     }
+
+    @Test("double enter on same instance throws alreadyEntered")
+    func testDoubleEnterThrowsAlreadyEntered() throws {
+        guard isatty(STDIN_FILENO) == 1 else {
+            return // skip
+        }
+
+        let tty = RawTTY(fd: STDIN_FILENO)
+        try tty.enter()
+        defer { tty.restore() }
+
+        #expect(throws: RawTTYError.alreadyEntered) {
+            try tty.enter()
+        }
+    }
 }
