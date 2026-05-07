@@ -11,7 +11,10 @@ It provides:
 - event-driven transcript rendering
 - terminal-friendly Markdown presentation for headings, lists, blockquotes, fenced code blocks, and tables
 - in-place streaming replacement with `inlineAnchor` / `legacyAbsolute` strategies
-- tool execution placeholders (`running...` -> `done/failed`)
+- **commit / live partition rendering**: committed lines are append-only, live lines are efficiently diffed; committed append uses `ESC[nL` fast path to avoid redrawing unchanged live content
+- **live budget with overflow settlement**: when live lines exceed a configured budget, oldest lines are automatically settled into committed to avoid unbounded growth
+- **tool execution placeholders** (`running...` -> `done/failed`) with stable slot ordering for out-of-order completions
+- **resize-safe anchoring**: physical row caches are recomputed on terminal resize so diff cursor math stays correct
 - single-line text input primitives with CJK-safe cursor accounting and horizontal scrolling
 - modal/list-picker primitives for temporary terminal overlays
 - semantic ANSI styling with plain-text fallback
@@ -74,11 +77,14 @@ func demo() {
 
 You can also use:
 
+- `render(committed:live:cursorOffset:)` for two-region rendering where committed is append-only and live is diff-friendly
+- `liveBudget` on `TUI` to cap live region size with automatic overflow settlement
 - `appendFrame(lines:)` to write plain terminal output without retained-mode redraw
 - `resetRetainedFrame()` to drop inline redraw state before switching modes
 - `transcriptLines` as the stable read-only snapshot of rendered transcript lines
 - `StreamingTranscriptAppendState` to compute transcript deltas for append-only streaming UIs
 - `TranscriptRenderer.activeStreamingRange` to know which transcript range is still mutable
+- `TranscriptRenderer.slotOrderedToolIDs` to inspect pending tools in start order
 
 Low-level logical-line and terminal-metric helpers are kept as implementation details; the stable consumer-facing API is centered on `TUI`, `TranscriptRenderer`, `RenderEvent`, `RenderMessage`, `Style`, `prefixedLogicalLines`, and `StreamingTranscriptAppendState`.
 

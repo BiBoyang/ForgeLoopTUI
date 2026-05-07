@@ -30,15 +30,16 @@ When working on a specific subsystem, use targeted test filters.
 
 Use when changing:
 
-- `Sources/ForgeLoopTUI/TUI.swift`
-- `Sources/ForgeLoopTUI/LogicalLines.swift`
-- `Sources/ForgeLoopTUI/TerminalMetrics.swift`
+- `Sources/ForgeLoopTUI/Runtime/TUIRuntime.swift`
+- `Sources/ForgeLoopTUI/Markdown/LogicalLines.swift`
+- `Sources/ForgeLoopTUI/ANSI/DisplayWidth.swift`
 
-Command:
+Commands:
 
 ```bash
 cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI
 swift test --filter TUITests
+swift test --filter CommittedLiveRenderTests
 ```
 
 This verifies:
@@ -47,6 +48,9 @@ This verifies:
 - legacy full redraw behavior
 - append-only output behavior
 - retained-state reset behavior
+- **commit/live partition rendering**: diff baseline correctness, fast path for committed append, alternating API safety
+- **live budget overflow**: automatic settlement of old live lines into committed
+- **resize-safe anchoring**: physical row recomputation on terminal resize
 
 ### `Style`
 
@@ -128,6 +132,8 @@ This verifies:
 - multi-line user message handling
 - tool placeholder replacement
 - multi-line tool summary handling
+- **tool slot ordering**: out-of-order completion preserves start-order slot semantics
+- **duplicate tool-call guard**: repeated `operationStart` with same id is ignored
 - blank-line and error rendering behavior
 
 ### `StreamingTranscriptAppendState`

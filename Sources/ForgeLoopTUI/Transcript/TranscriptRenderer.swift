@@ -5,11 +5,13 @@ public final class TranscriptRenderer {
     let lines: TranscriptBuffer
     private var streamingRange: Range<Int>?
     private var completedRange: Range<Int>?
-    private var pendingTools: [String: Int] = [:]
+    /// 按开始顺序（slot 顺序）存储的 pending tool。
+    private var pendingTools: [(id: String, lineIndex: Int)] = []
     private var notificationLines: [Int] = []
     private let markdownEngine: MarkdownEngine
 
     public var pendingToolCount: Int { pendingTools.count }
+    public var slotOrderedToolIDs: [String] { pendingTools.map { $0.id } }
     public var activeStreamingRange: Range<Int>? { streamingRange }
     public var lastCompletedAssistantRange: Range<Int>? { completedRange }
     public var preferredPinnedRange: Range<Int>? { streamingRange ?? completedRange }
@@ -61,12 +63,15 @@ public final class TranscriptRenderer {
             }
 
         case .operationStart(let id, let header, let status):
+            guard !pendingTools.contains(where: { $0.id == id }) else { break }
             append(header)
             append(status)
-            pendingTools[id] = lines.count - 1
+            pendingTools.append((id: id, lineIndex: lines.count - 1))
 
         case .operationEnd(let id, let isError, let result):
-            guard let lineIndex = pendingTools.removeValue(forKey: id) else { break }
+            guard let slotIndex = pendingTools.firstIndex(where: { $0.id == id }) else { break }
+            let lineIndex = pendingTools[slotIndex].lineIndex
+            pendingTools.remove(at: slotIndex)
             let prefix = isError ? "⎿ failed" : "⎿ done"
             let previewLines = formatToolResult(result)
             let resultLines = previewLines.isEmpty ? [prefix] : previewLines.map { "\(prefix): \($0)" }
@@ -117,9 +122,9 @@ public final class TranscriptRenderer {
     }
 
     private func shiftIndices(after threshold: Int, by delta: Int) {
-        for (toolCallId, lineIdx) in pendingTools {
-            if lineIdx > threshold {
-                pendingTools[toolCallId] = lineIdx + delta
+        for index in pendingTools.indices {
+            if pendingTools[index].lineIndex > threshold {
+                pendingTools[index].lineIndex += delta
             }
         }
         for index in notificationLines.indices {

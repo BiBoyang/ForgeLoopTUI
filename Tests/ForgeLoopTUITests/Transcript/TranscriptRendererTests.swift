@@ -131,6 +131,55 @@ final class TranscriptRendererTests: XCTestCase {
         XCTAssertEqual(renderer.pendingToolCount, 0)
     }
 
+    // MARK: - 8a) 重复 toolCallId 的 operationStart 被忽略
+
+    func testDuplicateToolStartIsIgnored() {
+        let renderer = TranscriptRenderer()
+        renderer.apply(.toolExecutionStart(toolCallId: "a", toolName: "toolA", args: "1"))
+        renderer.apply(.toolExecutionStart(toolCallId: "a", toolName: "toolA", args: "2"))
+
+        XCTAssertEqual(renderer.pendingToolCount, 1)
+        XCTAssertEqual(renderer.slotOrderedToolIDs, ["a"])
+
+        // 只应有一条 running 行
+        let runningCount = renderer.transcriptLines.filter { $0.contains("running...") }.count
+        XCTAssertEqual(runningCount, 1)
+    }
+
+    // MARK: - 8b) out-of-order completion 保持 slot 顺序
+
+    func testOutOfOrderCompletionPreservesSlotOrder() {
+        let renderer = TranscriptRenderer()
+
+        // A, B, C 依次开始
+        renderer.apply(.toolExecutionStart(toolCallId: "a", toolName: "toolA", args: "1"))
+        renderer.apply(.toolExecutionStart(toolCallId: "b", toolName: "toolB", args: "2"))
+        renderer.apply(.toolExecutionStart(toolCallId: "c", toolName: "toolC", args: "3"))
+
+        // slot 顺序应为开始顺序
+        XCTAssertEqual(renderer.slotOrderedToolIDs, ["a", "b", "c"])
+
+        // B 先完成（out-of-order）
+        renderer.apply(.toolExecutionEnd(toolCallId: "b", toolName: "toolB", isError: false, summary: "B-result"))
+        XCTAssertEqual(renderer.slotOrderedToolIDs, ["a", "c"])
+
+        // A 完成
+        renderer.apply(.toolExecutionEnd(toolCallId: "a", toolName: "toolA", isError: false, summary: "A-result"))
+        XCTAssertEqual(renderer.slotOrderedToolIDs, ["c"])
+
+        // C 完成
+        renderer.apply(.toolExecutionEnd(toolCallId: "c", toolName: "toolC", isError: false, summary: "C-result"))
+        XCTAssertEqual(renderer.slotOrderedToolIDs, [])
+
+        // 验证最终 transcript 按 slot 顺序排列：A, B, C
+        let lines = renderer.transcriptLines
+        let aIndex = lines.firstIndex { $0.contains("A-result") }!
+        let bIndex = lines.firstIndex { $0.contains("B-result") }!
+        let cIndex = lines.firstIndex { $0.contains("C-result") }!
+        XCTAssertLessThan(aIndex, bIndex, "A should appear before B in slot order")
+        XCTAssertLessThan(bIndex, cIndex, "B should appear before C in slot order")
+    }
+
     // MARK: - 9) 长->短->长 连续更新后只保留最终内容
 
     func testLongShortLongUpdateFinalContentOnly() {

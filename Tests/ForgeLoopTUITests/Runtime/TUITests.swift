@@ -191,4 +191,25 @@ final class TUITests: XCTestCase {
         // 验证不含清屏序列（间接：如果清屏则 row 0 会为空）
         XCTAssertFalse(vt.screenLines[0].allSatisfy { $0 == " " })
     }
+
+    // MARK: - M4-S5: Resize-safe anchoring (VirtualTerminal screen-state assertion)
+
+    func testResizeRecomputesPhysicalRowsOnVirtualTerminal() {
+        let vt = VirtualTerminal(width: 10, height: 5)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, terminalWidth: 10, terminalHeight: 5, terminal: vt)
+
+        // 帧1：width=10，"longline" = 8 chars → 1 physical row
+        tui.requestRender(lines: ["a", "longline"])
+        XCTAssertTrue(vt.screenLines[0].hasPrefix("a"))
+        XCTAssertTrue(vt.screenLines[1].hasPrefix("longline"))
+
+        // resize 到 width=5（VirtualTerminal 截断，TUI 重算物理行缓存）
+        vt.resize(width: 5, height: 5)
+        tui.updateTerminalSize(width: 5, height: 5)
+
+        // 帧2：内容变化，diff 应基于重算后的物理行数正确回退
+        tui.requestRender(lines: ["a", "abcde"])
+        XCTAssertTrue(vt.screenLines[0].hasPrefix("a"))
+        XCTAssertTrue(vt.screenLines[1].hasPrefix("abcde"))
+    }
 }
