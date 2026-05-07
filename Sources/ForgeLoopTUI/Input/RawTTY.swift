@@ -23,7 +23,7 @@ import Glibc
 /// }
 /// ```
 public final class RawTTY: @unchecked Sendable {
-    private let fd: Int32
+    public let fd: Int32
     private let lock = NSLock()
     private var originalTermios: termios?
 
