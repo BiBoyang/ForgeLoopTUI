@@ -46,6 +46,12 @@ public final class ByteStreamBuffer: @unchecked Sendable {
         return units
     }
 
+    /// 当前缓冲是否以不完整 ESC 开头（用于 ESC/Alt 歧义 timer）。
+    public var isPendingEscape: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return buffer.first == 0x1B
+    }
+
     // MARK: - Private
 
     private enum ParseResult {

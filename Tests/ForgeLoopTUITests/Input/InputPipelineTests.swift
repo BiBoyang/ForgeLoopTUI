@@ -169,4 +169,118 @@ struct InputPipelineTests {
             KeyEvent(key: .right),
         ])
     }
+
+    // MARK: - ESC Timeout
+
+    @Test("ESC alone triggers escape after timeout")
+    func testESCAloneTimeout() {
+        let clock = TestInputClock()
+        let pipe = InputPipeline(clock: clock, escapeTimeoutNanoseconds: 50_000_000)
+        let e1 = pipe.feed([0x1B])
+        #expect(e1.isEmpty)
+
+        clock.advance(by: 50_000_000)
+        let e2 = pipe.tick()
+        #expect(e2 == [KeyEvent(key: .escape)])
+    }
+
+    @Test("Alt+x within timeout window")
+    func testAltXWithinWindow() {
+        let clock = TestInputClock()
+        let pipe = InputPipeline(clock: clock, escapeTimeoutNanoseconds: 50_000_000)
+        let e1 = pipe.feed([0x1B])
+        #expect(e1.isEmpty)
+
+        clock.advance(by: 10_000_000)
+        let e2 = pipe.feed([0x78]) // 'x'
+        #expect(e2 == [KeyEvent(key: .character("x"), modifiers: .alt)])
+    }
+
+    @Test("ESC + CSI within timeout window")
+    func testESCCSIWithinWindow() {
+        let clock = TestInputClock()
+        let pipe = InputPipeline(clock: clock, escapeTimeoutNanoseconds: 50_000_000)
+        let e1 = pipe.feed([0x1B, 0x5B])
+        #expect(e1.isEmpty)
+
+        clock.advance(by: 10_000_000)
+        let e2 = pipe.feed([0x41]) // 'A' → completes ESC[A
+        #expect(e2 == [KeyEvent(key: .up)])
+    }
+
+    @Test("ESC alone then normal key after timeout")
+    func testESCAloneThenNormalKeyAfterTimeout() {
+        let clock = TestInputClock()
+        let pipe = InputPipeline(clock: clock, escapeTimeoutNanoseconds: 50_000_000)
+        let e1 = pipe.feed([0x1B])
+        #expect(e1.isEmpty)
+
+        clock.advance(by: 50_000_000)
+        let e2 = pipe.tick()
+        #expect(e2 == [KeyEvent(key: .escape)])
+
+        let e3 = pipe.feed([0x78])
+        #expect(e3 == [KeyEvent(key: .character("x"))])
+    }
+
+    @Test("flush cancels pending escape and emits it immediately")
+    func testFlushCancelsPendingEscape() {
+        let clock = TestInputClock()
+        let pipe = InputPipeline(clock: clock, escapeTimeoutNanoseconds: 50_000_000)
+        let e1 = pipe.feed([0x1B])
+        #expect(e1.isEmpty)
+
+        let e2 = pipe.flush()
+        #expect(e2 == [KeyEvent(key: .escape)])
+    }
+
+    @Test("unclosed paste with trailing isolated ESC on flush")
+    func testUnclosedPasteWithTrailingESC() {
+        let pipe = InputPipeline()
+        var bytes: [UInt8] = [0x1B, 0x5B, 0x32, 0x30, 0x30, 0x7E] // ESC[200~
+        bytes.append(contentsOf: Array("abc".utf8))
+        bytes.append(0x1B) // trailing isolated ESC
+        let e1 = pipe.feed(bytes)
+        #expect(e1.isEmpty)
+
+        let e2 = pipe.flush()
+        #expect(e2.count == 1)
+        #expect(e2[0] == KeyEvent(key: .paste("abc\u{1B}")))
+    }
+
+    @Test("unclosed paste with incomplete UTF-8 on flush")
+    func testUnclosedPasteWithIncompleteUTF8() {
+        let pipe = InputPipeline()
+        var bytes: [UInt8] = [0x1B, 0x5B, 0x32, 0x30, 0x30, 0x7E] // ESC[200~
+        bytes.append(contentsOf: Array("ab".utf8))
+        bytes.append(contentsOf: [0xE4, 0xB8]) // incomplete UTF-8 for "中"
+        let e1 = pipe.feed(bytes)
+        #expect(e1.isEmpty)
+
+        let e2 = pipe.flush()
+        #expect(e2.count == 1)
+        #expect(e2[0] == KeyEvent(key: .paste("ab\u{FFFD}")))
+    }
+
+    @Test("ESC timeout does not interfere with complete sequences")
+    func testTimeoutDoesNotInterfereWithComplete() {
+        let clock = TestInputClock()
+        let pipe = InputPipeline(clock: clock, escapeTimeoutNanoseconds: 50_000_000)
+        // ESC x in one feed → complete escape sequence, no timer needed
+        let events = pipe.feed([0x1B, 0x78])
+        #expect(events == [KeyEvent(key: .character("x"), modifiers: .alt)])
+
+        // No pending timeout
+        clock.advance(by: 100_000_000)
+        let e2 = pipe.tick()
+        #expect(e2.isEmpty)
+    }
+}
+
+// MARK: - Test Helpers
+
+final class TestInputClock: InputClock, @unchecked Sendable {
+    var current: UInt64 = 0
+    func advance(by nanoseconds: UInt64) { current += nanoseconds }
+    func now() -> UInt64 { current }
 }
