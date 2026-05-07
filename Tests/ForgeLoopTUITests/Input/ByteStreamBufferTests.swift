@@ -159,16 +159,41 @@ struct ByteStreamBufferTests {
         #expect(units[0] == .escape(command: "a"))
     }
 
-    @Test("ESC with illegal CSI content is preserved in feed, flushed as bytes")
+    @Test("ESC with illegal CSI content is consumed byte by byte in feed")
     func testESCIllegalCSIFallback() {
         let buf = ByteStreamBuffer()
         // ESC [ followed by illegal byte (0xE4) — not a valid CSI
-        // In feed mode, the whole sequence is preserved because it might be incomplete
+        // ESC is emitted as raw byte, '[' as character; 0xE4 is incomplete UTF-8, buffered
         let u1 = buf.feed([0x1B, 0x5B, 0xE4])
-        #expect(u1.isEmpty)
-        // On flush, ESC falls back to character, remaining bytes parsed as UTF-8
+        #expect(u1.count == 2)
+        #expect(u1[0] == .byte(0x1B))
+        #expect(u1[1] == .character("["))
+        // On flush, the lone 0xE4 becomes a replacement character
         let flushed = buf.flush()
-        #expect(flushed.count >= 1)
-        #expect(flushed[0] == .character("\u{1B}"))
+        #expect(flushed.count == 1)
+        #expect(flushed[0] == .character("\u{FFFD}"))
+    }
+
+    @Test("illegal UTF-8 start byte does not block subsequent ASCII")
+    func testIllegalByteDoesNotBlock() {
+        let buf = ByteStreamBuffer()
+        let units = buf.feed([0xFF, 0x41]) // 0xFF is illegal UTF-8 start, then 'A'
+        #expect(units.count == 2)
+        #expect(units[0] == .byte(0xFF))
+        #expect(units[1] == .character("A"))
+    }
+
+    @Test("illegal CSI byte does not block subsequent ASCII")
+    func testIllegalCSIDoesNotBlock() {
+        let buf = ByteStreamBuffer()
+        // ESC[E4A — 0xE4 is illegal in CSI, so ESC is consumed as raw byte.
+        // '[' is a normal character. 0xE4 starts a UTF-8 sequence but 0x41 is
+        // not a valid continuation byte, so 0xE4 is consumed as raw byte too.
+        let units = buf.feed([0x1B, 0x5B, 0xE4, 0x41])
+        #expect(units.count == 4)
+        #expect(units[0] == .byte(0x1B))
+        #expect(units[1] == .character("["))
+        #expect(units[2] == .byte(0xE4))
+        #expect(units[3] == .character("A"))
     }
 }
