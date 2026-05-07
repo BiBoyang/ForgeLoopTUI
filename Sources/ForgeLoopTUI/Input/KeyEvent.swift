@@ -16,6 +16,8 @@ public struct KeyEvent: Sendable, Equatable {
 /// 可识别的按键类型。
 public enum Key: Sendable, Equatable {
     case character(Character)
+    /// Bracketed paste 聚合内容。
+    case paste(String)
     case up, down, left, right
     case home, end, pageUp, pageDown
     case insert, delete
