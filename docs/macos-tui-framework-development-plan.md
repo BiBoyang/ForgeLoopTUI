@@ -175,7 +175,14 @@ Definition of Done:
 > - `KeyEvent` / `KeyParser` normalized key model (character/arrow/home/end/F1-F12/Ctrl/Alt/Shift/modifier) with CSI + SS3 mapping
 > - `InputPipeline` bracketed paste (`ESC[200~` / `ESC[201~`) and ESC flush timer (50ms default via injectable `InputClock`)
 >   - **Integration note**: `InputPipeline.tick()` must be scheduled by the upper event loop (e.g. `DispatchSourceTimer` or `select` + timerfd) to resolve standalone ESC vs Alt+char ambiguity.
-> - Tests: RawTTY (6), ByteStreamBuffer (18), KeyParser (19), InputPipeline (22)
+> - `InputReader` high-level integration: `RawTTY` + `InputPipeline` + `DispatchSourceRead`/`DispatchSourceTimer` event loop, supporting restart and idempotent start/stop
+> - Tests: RawTTY (6), ByteStreamBuffer (18), KeyParser (19), InputPipeline (22), InputReader lifecycle (4)
+>
+> **Demo usage:**
+> ```bash
+> swift run ForgeLoopTUIDemo
+> ```
+> Press arrow keys, Ctrl/Alt combos, or paste text to see parsed `KeyEvent`s. Press `q` to quit.
 
 Definition of Done:
 
