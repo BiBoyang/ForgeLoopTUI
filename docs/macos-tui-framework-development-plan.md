@@ -167,18 +167,21 @@ Definition of Done:
 
 ## M3 - RawStdin and Input Pipeline (6-8 days)
 
-Deliverables:
-
-1. raw tty enter/restore lifecycle with robust cleanup
-2. stdin buffer for fragmented escape sequences
-3. key parser for arrows, home/end, ctrl combos, enter, escape
-4. bracketed paste support and escape flush timer
+> Status: completed
+>
+> Completed items:
+> - `RawTTY` raw tty enter/restore lifecycle with robust cleanup (double-enter guard, RAII `withRawTTY`, deinit restore)
+> - `ByteStreamBuffer` stdin buffer for fragmented escape sequences and UTF-8 reassembly; illegal-byte blocking bug fixed
+> - `KeyEvent` / `KeyParser` normalized key model (character/arrow/home/end/F1-F12/Ctrl/Alt/Shift/modifier) with CSI + SS3 mapping
+> - `InputPipeline` bracketed paste (`ESC[200~` / `ESC[201~`) and ESC flush timer (50ms default via injectable `InputClock`)
+>   - **Integration note**: `InputPipeline.tick()` must be scheduled by the upper event loop (e.g. `DispatchSourceTimer` or `select` + timerfd) to resolve standalone ESC vs Alt+char ambiguity.
+> - Tests: RawTTY (6), ByteStreamBuffer (18), KeyParser (19), InputPipeline (22)
 
 Definition of Done:
 
-1. input replay tests pass for fragmented sequences
-2. paste, cancellation, and UTF-8 boundaries are correct
-3. terminal settings are restored after forced interruption
+1. input replay tests pass for fragmented sequences ✅
+2. paste, cancellation, and UTF-8 boundaries are correct ✅
+3. terminal settings are restored after forced interruption ✅
 
 ## M4 - Render Semantics Upgrade (5-7 days)
 
