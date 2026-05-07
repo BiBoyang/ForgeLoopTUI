@@ -144,7 +144,7 @@ func visibleWidth(_ text: String) -> Int {
     return width
 }
 
-func physicalRows(for line: String, width: Int) -> Int {
+public func physicalRows(for line: String, width: Int) -> Int {
     guard width > 0 else { return 1 }
     let vw = visibleWidth(line)
     if vw == 0 { return 1 }

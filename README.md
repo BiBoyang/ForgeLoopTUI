@@ -22,6 +22,9 @@ It provides:
 - safe stdout writing with `EINTR` / `EAGAIN` handling
 - logical-line normalization for embedded `\n` / `\r\n`
 - reusable streaming transcript append planner for scrollback-safe terminal output
+- **declarative component DSL** (`Component` protocol, `VStack`, `@ComponentBuilder`) for composable UI without touching runtime internals
+- **frame composition** (`ComposedFrame`, `FrameComposer`) to assemble committed/live regions from multiple components
+- **viewport budget clipping** (`LayoutBudget`) with physical-row-aware tail retention and optional overflow markers
 - `Terminal` protocol with `StdoutTerminal` and `VirtualTerminal` for testable, decoupled output
 
 ## Requirements
