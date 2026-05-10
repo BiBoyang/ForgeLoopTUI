@@ -5,6 +5,8 @@ struct ScreenLayoutRendererTests {
 
     private let renderer = ScreenLayoutRenderer()
 
+    // MARK: - Empty / boundary
+
     @Test func testEmptyLayoutReturnsEmpty() {
         let layout = ScreenLayout()
         let config = ScreenLayoutConfig(terminalHeight: 24)
@@ -14,11 +16,14 @@ struct ScreenLayoutRendererTests {
         #expect(frame.cursorOffset == nil)
     }
 
+    // MARK: - Committed-only baseline (must not regress)
+
     @Test func testHeaderOnly() {
         let layout = ScreenLayout(header: ["Header"])
         let config = ScreenLayoutConfig(terminalHeight: 24)
         let frame = renderer.render(layout: layout, config: config)
         #expect(frame.committed == ["Header"])
+        #expect(frame.live.isEmpty)
     }
 
     @Test func testTranscriptOutputInFull() {
@@ -26,6 +31,7 @@ struct ScreenLayoutRendererTests {
         let config = ScreenLayoutConfig(terminalHeight: 10)
         let frame = renderer.render(layout: layout, config: config)
         #expect(frame.committed == ["a", "b", "c"])
+        #expect(frame.live.isEmpty)
     }
 
     @Test func testLongTranscriptNotTruncated() {
@@ -35,14 +41,14 @@ struct ScreenLayoutRendererTests {
         #expect(frame.committed.count == 100)
         #expect(frame.committed.first == "line0")
         #expect(frame.committed.last == "line99")
+        #expect(frame.live.isEmpty)
     }
 
-    @Test func testRenderOrderHeaderTranscriptStatusInput() {
+    @Test func testRenderOrderHeaderTranscriptStatusWithoutInput() {
         let layout = ScreenLayout(
             header: ["H"],
             transcript: ["T1", "T2"],
-            status: ["S"],
-            input: ["I"]
+            status: ["S"]
         )
         let config = ScreenLayoutConfig(terminalHeight: 24)
         let frame = renderer.render(layout: layout, config: config)
@@ -50,11 +56,10 @@ struct ScreenLayoutRendererTests {
         #expect(frame.committed == [
             "H",
             "T1", "T2",
-            "",   // divider
+            "",
             "S",
-            "",   // divider
-            "I",
         ])
+        #expect(frame.live.isEmpty)
     }
 
     @Test func testStatusAndInputAfterTranscript() {
@@ -65,7 +70,8 @@ struct ScreenLayoutRendererTests {
         )
         let config = ScreenLayoutConfig(terminalHeight: 10)
         let frame = renderer.render(layout: layout, config: config)
-        #expect(frame.committed == ["t1", "t2", "", "STATUS", "", "> "])
+        #expect(frame.committed == ["t1", "t2", "", "STATUS"])
+        #expect(frame.live == ["", "> "])
     }
 
     @Test func testHeaderHiddenWhenShowHeaderFalse() {
@@ -76,6 +82,7 @@ struct ScreenLayoutRendererTests {
         let config = ScreenLayoutConfig(terminalHeight: 24, showHeader: false)
         let frame = renderer.render(layout: layout, config: config)
         #expect(frame.committed == ["T"])
+        #expect(frame.live.isEmpty)
     }
 
     @Test func testQueueRenderedBetweenTranscriptAndStatus() {
@@ -87,6 +94,7 @@ struct ScreenLayoutRendererTests {
         let config = ScreenLayoutConfig(terminalHeight: 10)
         let frame = renderer.render(layout: layout, config: config)
         #expect(frame.committed == ["t1", "", "q1", "q2", "", "s1"])
+        #expect(frame.live.isEmpty)
     }
 
     @Test func testEmptyQueueDoesNotAddDivider() {
@@ -97,7 +105,8 @@ struct ScreenLayoutRendererTests {
         )
         let config = ScreenLayoutConfig(terminalHeight: 10)
         let frame = renderer.render(layout: layout, config: config)
-        #expect(frame.committed == ["t1", "", "STATUS", "", "> "])
+        #expect(frame.committed == ["t1", "", "STATUS"])
+        #expect(frame.live == ["", "> "])
     }
 
     @Test func testPinnedRangeDoesNotAffectOutput() {
@@ -108,7 +117,55 @@ struct ScreenLayoutRendererTests {
         let config = ScreenLayoutConfig(terminalHeight: 3)
         let frame = renderer.render(layout: layout, config: config)
         #expect(frame.committed == ["old1", "old2", "stream1", "stream2"])
+        #expect(frame.live.isEmpty)
     }
+
+    // MARK: - Live region structure
+
+    @Test func testLiveContainsInputWithDividerWhenCommittedPresent() {
+        let layout = ScreenLayout(
+            header: ["H"],
+            transcript: ["T"],
+            input: ["I1", "I2"]
+        )
+        let config = ScreenLayoutConfig(terminalHeight: 24)
+        let frame = renderer.render(layout: layout, config: config)
+
+        #expect(frame.committed == ["H", "T"])
+        #expect(frame.live == ["", "I1", "I2"])
+    }
+
+    @Test func testLiveContainsInputWithoutDividerWhenCommittedEmpty() {
+        let layout = ScreenLayout(input: ["> hello"])
+        let config = ScreenLayoutConfig(terminalHeight: 24)
+        let frame = renderer.render(layout: layout, config: config)
+
+        #expect(frame.committed.isEmpty)
+        #expect(frame.live == ["> hello"])
+    }
+
+    @Test func testLiveIsEmptyWhenInputIsEmpty() {
+        let layout = ScreenLayout(
+            header: ["H"],
+            transcript: ["T"],
+            status: ["S"]
+        )
+        let config = ScreenLayoutConfig(terminalHeight: 24)
+        let frame = renderer.render(layout: layout, config: config)
+
+        #expect(frame.live.isEmpty)
+    }
+
+    @Test func testLivePreservesMultiLineInput() {
+        let layout = ScreenLayout(input: ["line1", "line2", "line3"])
+        let config = ScreenLayoutConfig(terminalHeight: 24)
+        let frame = renderer.render(layout: layout, config: config)
+
+        #expect(frame.committed.isEmpty)
+        #expect(frame.live == ["line1", "line2", "line3"])
+    }
+
+    // MARK: - cursorOffset passthrough
 
     @Test func testCursorOffsetPassthrough() {
         let layout = ScreenLayout(input: ["> hello"])
@@ -117,16 +174,49 @@ struct ScreenLayoutRendererTests {
         #expect(frame.cursorOffset == 5)
     }
 
-    @Test func testLiveIsAlwaysEmpty() {
+    @Test func testCursorOffsetWithLiveAndCommitted() {
+        let layout = ScreenLayout(
+            transcript: ["t1"],
+            input: ["> "]
+        )
+        let config = ScreenLayoutConfig(terminalHeight: 10)
+        let frame = renderer.render(layout: layout, config: config, cursorOffset: 2)
+
+        #expect(frame.committed == ["t1"])
+        #expect(frame.live == ["", "> "])
+        #expect(frame.cursorOffset == 2)
+    }
+
+    @Test func testCursorOffsetNilWhenOmitted() {
+        let layout = ScreenLayout(transcript: ["t1"], input: ["> "])
+        let config = ScreenLayoutConfig(terminalHeight: 10)
+        let frame = renderer.render(layout: layout, config: config)
+        #expect(frame.cursorOffset == nil)
+    }
+
+    // MARK: - Full assembly equivalence
+
+    @Test func testFullAssemblyCommittedPlusLiveEqualsOldFlatOutput() {
         let layout = ScreenLayout(
             header: ["H"],
-            transcript: ["T"],
+            transcript: ["T1", "T2"],
             queue: ["Q"],
             status: ["S"],
             input: ["I"]
         )
         let config = ScreenLayoutConfig(terminalHeight: 24)
         let frame = renderer.render(layout: layout, config: config)
-        #expect(frame.live.isEmpty)
+
+        let flat = frame.committed + frame.live
+        #expect(flat == [
+            "H",
+            "T1", "T2",
+            "",
+            "Q",
+            "",
+            "S",
+            "",
+            "I",
+        ])
     }
 }

@@ -1,5 +1,17 @@
 import Foundation
 
+/// Renders a ``ScreenLayout`` into a ``ComposedFrame`` with a minimal live-region policy.
+///
+/// Live-region policy (stable, testable, and visually neutral):
+/// - **Live** = the final `input` lines (if any). Input is inherently transient and
+///   may change on every keystroke, so it is the smallest, most stable candidate for
+///   the live region.
+/// - **Committed** = everything else (`header`, `transcript`, `queue`, `status`,
+///   plus divider blank lines). These lines change far less frequently and are safe
+///   to treat as stable history.
+///
+/// This keeps the visible text order identical to the old all-committed path while
+/// giving the downstream runtime a real live region to diff.
 public struct ScreenLayoutRenderer: Sendable {
     public init() {}
 
@@ -8,33 +20,40 @@ public struct ScreenLayoutRenderer: Sendable {
         config: ScreenLayoutConfig,
         cursorOffset: Int? = nil
     ) -> ComposedFrame {
-        var lines: [String] = []
+        var committed: [String] = []
 
         if config.showHeader && !layout.header.isEmpty {
-            lines.append(contentsOf: layout.header)
+            committed.append(contentsOf: layout.header)
         }
 
-        lines.append(contentsOf: layout.transcript)
+        committed.append(contentsOf: layout.transcript)
 
         if !layout.queue.isEmpty {
-            lines.append("")
-            lines.append(contentsOf: layout.queue)
+            committed.append("")
+            committed.append(contentsOf: layout.queue)
         }
 
         if !layout.status.isEmpty {
-            lines.append("")
-            lines.append(contentsOf: layout.status)
+            committed.append("")
+            committed.append(contentsOf: layout.status)
         }
 
-        if !layout.input.isEmpty {
-            lines.append("")
-            lines.append(contentsOf: layout.input)
+        // Input is the live region (minimal stable rule).
+        let live: [String]
+        if layout.input.isEmpty {
+            live = []
+        } else {
+            // Prepend a divider blank line when there is preceding committed content.
+            if committed.isEmpty {
+                live = layout.input
+            } else {
+                live = [""] + layout.input
+            }
         }
 
-        // 行为对齐旧实现：全部作为 committed，live 先置空
         return ComposedFrame(
-            committed: lines,
-            live: [],
+            committed: committed,
+            live: live,
             cursorOffset: cursorOffset
         )
     }
