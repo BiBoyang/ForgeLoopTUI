@@ -16,7 +16,10 @@ Current status:
 - Done (M6, 2026-05-11): AppKit hybrid bridge demo landed.
   - `HybridRenderState` + `HybridRenderAdapter` + `AppKitPanelState`
   - 13 bridge contract tests, zero TUI renderer rewrite, zero AppKit import in library.
-- Next: M7 release prep and API docs polish.
+- Done (M7, 2026-05-11): Release prep and API docs polish landed.
+  - `public-api-surface.md` + `semver-and-api-stability.md` + `release-checklist.md`
+  - README / integration-guide / migration-guide updated with version policy and third-party guidance.
+- Next: ongoing maintenance per `release-checklist.md`; post-1.0 enhancements (DocC, SPI) deferred.
 
 ## Ordered Migration TODO
 

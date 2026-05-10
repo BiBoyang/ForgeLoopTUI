@@ -247,16 +247,20 @@ Exit criteria:
 
 ## 10) Immediate Next Step
 
-Cross-repository extraction and M6 bridge demo are complete. The next stage is release prep:
+M0–M7 are complete. The framework is ready for third-party consumption.
 
-1. **M7** — API docs (DocC), release checklist, and version/tag plan
-2. Expand cross-module replay tests (input + layout联动边界)
+Ongoing maintenance (no new milestone):
 
-Keep each slice incremental:
+1. Keep `docs/public-api-surface.md` in sync with every public API change.
+2. Follow `docs/release-checklist.md` for every version bump.
+3. Follow `docs/semver-and-api-stability.md` for deprecation and breaking-change policy.
+4. Expand cross-module replay tests (input + layout联动边界) as needed.
 
-1. docs and scorecards first
-2. benchmark baselines second
-3. release prep third
+Post-1.0 enhancements (not blocking):
+
+- DocC catalog and hosted API reference
+- Swift Package Index integration
+- Additional example packages
 
 ## 11) Dataflow Companion
 

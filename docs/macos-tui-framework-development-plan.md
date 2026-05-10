@@ -276,17 +276,32 @@ Definition of Done:
 
 ## M7 - Stabilization and Release Prep (3-5 days)
 
+> Status: completed (merged)
+>
+> Completed items:
+> - `docs/public-api-surface.md` — complete catalog of public APIs with stability tiers (Stable / Provisional / Internal-detail / Deprecated)
+> - `docs/semver-and-api-stability.md` — SemVer policy, breaking-change definitions, deprecation window (1 MINOR), compatibility test requirements
+> - `docs/release-checklist.md` — executable checklist covering code/test gate, docs sync, API audit, performance gate, tag/release notes, post-release verification
+> - README updated with Stability & SemVer section linking to the three new docs
+> - `integration-guide.md` updated with "Version Selection and Upgrade Notes" paragraph
+> - `migration-guide-for-forgeloopcli.md` updated with "From Internal Consumer to Third-Party Consumer" guidance
+> - M0–M7 milestone status synchronized across all plan documents
+>
+> Deferred post-1.0:
+> - DocC catalog and hosted API docs (can be added without breaking changes)
+> - Swift Package Index integration
+
 Deliverables:
 
-1. performance regression gates and baseline snapshots
-2. API docs and migration notes
-3. release checklist and version/tag plan
+1. performance regression gates and baseline snapshots ✅ (F1 baselines established; see `ForgeLoop/docs/perf-baseline-snapshots.md`)
+2. API docs and migration notes ✅ (`public-api-surface.md`, `semver-and-api-stability.md`, `integration-guide.md`, `migration-guide-for-forgeloopcli.md`)
+3. release checklist and version/tag plan ✅ (`release-checklist.md`)
 
 Definition of Done:
 
-1. benchmark thresholds are documented and enforced
-2. docs include setup, extension points, and usage samples
-3. release can be cut without manual terminal-workaround steps
+1. benchmark thresholds are documented and enforced ✅
+2. docs include setup, extension points, and usage samples ✅
+3. release can be cut without manual terminal-workaround steps ✅
 
 ## 6) Test Strategy
 
@@ -316,9 +331,17 @@ Suggested thresholds for local CI baseline:
 
 ## 9) Immediate Next Step
 
-M0–M6 are complete. Proceed in this order:
+M0–M7 are complete. The framework is ready for third-party consumption.
 
-1. **M7** — release prep and API docs polish
-2. Expand cross-module replay tests (input + layout联动边界)
+Ongoing maintenance (no new milestone):
 
-For current scores and governance rules, see `docs/tui-maturity-scorecards.md`.
+1. Keep `docs/public-api-surface.md` in sync with every public API change.
+2. Follow `docs/release-checklist.md` for every version bump.
+3. Follow `docs/semver-and-api-stability.md` for deprecation and breaking-change policy.
+4. Expand cross-module replay tests (input + layout联动边界) as needed.
+
+Post-1.0 enhancements (not blocking):
+
+- DocC catalog and hosted API reference
+- Swift Package Index integration
+- Additional example packages

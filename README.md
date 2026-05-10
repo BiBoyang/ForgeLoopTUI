@@ -185,6 +185,12 @@ The public types involved are:
 
 For design rationale and change notes, see `docs/markdown-table-rendering.md`.
 
+## Stability & SemVer
+
+- `docs/public-api-surface.md` — complete catalog of public APIs with stability tiers (Stable / Provisional / Internal-detail)
+- `docs/semver-and-api-stability.md` — SemVer policy, breaking-change definitions, deprecation window, and compatibility test requirements
+- `docs/release-checklist.md` — step-by-step release validation (tests, docs, API audit, performance gate, tag)
+
 ## Roadmap and Architecture Docs
 
 - `docs/macos-tui-framework-development-plan.md`
