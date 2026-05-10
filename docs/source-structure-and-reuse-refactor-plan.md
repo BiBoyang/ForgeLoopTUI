@@ -3,6 +3,48 @@
 Date: 2026-05-07
 Scope: file layout, module boundaries, and code reuse strategy
 
+## 0) Current Progress Snapshot
+
+As of 2026-05-10, the directory split described in this document is mostly
+landed in `ForgeLoopTUI`:
+
+1. `ANSI`, `Terminal`, `Input`, `Runtime`, `Transcript`, `Markdown`,
+   `Components`, and `Style` directories already exist
+2. reusable input/runtime building blocks (`RawTTY`, `InputPipeline`,
+   `InputReader`, `RenderLoop`, `VirtualTerminal`) are already library-owned
+3. `ComposedFrame`, `FrameComposer`, `LayoutBudget`, and basic component
+   adapters are already available for composition-oriented callers
+
+The main remaining reuse gap is no longer inside this repository's directory
+tree. It is at the integration boundary with `ForgeLoop`, where `ForgeLoopCli`
+still owns duplicate or app-adjacent TUI infrastructure:
+
+1. `ForgeLoop/Sources/ForgeLoopCli/TUIRunner.swift`
+2. `ForgeLoop/Sources/ForgeLoopCli/Layout.swift`
+3. `ForgeLoop/Sources/ForgeLoopCli/LayoutRenderer.swift`
+4. terminal-size helpers that should be library-owned
+
+So the next refactor stage should focus on cross-repository extraction, not
+another large internal reshuffle.
+
+### 0.1) Cross-Repo Slice-1 Status (2026-05-10)
+
+Landed in this slice:
+
+1. moved terminal-size API (`TerminalSize`, `getTerminalSize()`) into
+   `ForgeLoopTUI/Terminal`
+2. moved UTF-8 erase flag helpers (`hasUTF8EraseFlag`, `withUTF8EraseFlag`)
+   into `ForgeLoopTUI/Input`
+3. switched `ForgeLoopCli/CodingTUI` to `ForgeLoopTUI` input model
+   (`KeyEvent`, `InputReader`, `RawTTY` stack)
+4. deleted `ForgeLoopCli/TUIRunner.swift` to stop app-local input/runtime
+   duplication
+
+Still pending in next slice:
+
+1. extract `Layout` / `LayoutRenderer` into library-owned screen layout layer
+2. continue shrinking app orchestration surface in `CodingTUI.swift`
+
 ## 1) Why This Refactor Is Needed
 
 Current source files are mostly flat under one directory. This creates:
@@ -94,6 +136,37 @@ Recommended mapping from current files:
 10. `Style.swift` -> `Style/Style.swift`
 11. `LogicalLines.swift` -> `Markdown/LogicalLines.swift`
 
+### 4.1) Remaining Cross-Repository Migration
+
+Now that the internal directory split is mostly complete, the practical file
+migration backlog is:
+
+1. `ForgeLoop/Sources/ForgeLoopCli/TUIRunner.swift`
+   - delete app-local `KeyEvent`, reader loop, and raw-tty helpers
+   - adopt `ForgeLoopTUI/Input/KeyEvent.swift`
+   - adopt `ForgeLoopTUI/Input/InputReader.swift`
+   - move terminal-flag helpers into `ForgeLoopTUI/Input`
+2. `ForgeLoop/Sources/ForgeLoopCli/Layout.swift`
+   - move `TerminalSize` and terminal-size querying into `ForgeLoopTUI/Terminal`
+   - extract the reusable layout model into `ForgeLoopTUI/Components`
+   - keep app-specific status/footer semantics in `ForgeLoopCli`
+3. `ForgeLoop/Sources/ForgeLoopCli/LayoutRenderer.swift`
+   - rebuild as a library-owned screen-layout renderer that outputs
+     `ComposedFrame`
+   - avoid cementing the old raw `[String]`-only renderer shape as the new API
+4. `ForgeLoop/Sources/ForgeLoopCli/CodingTUI.swift`
+   - shrink after the extraction above lands
+   - keep only orchestration, Agent wiring, slash-command flow, and app policy
+
+Files that should remain app-owned:
+
+1. `ForgeLoop/Sources/ForgeLoopCli/AgentEventRenderAdapter.swift`
+2. `ForgeLoop/Sources/ForgeLoopCli/PromptController.swift`
+3. `ForgeLoop/Sources/ForgeLoopCli/SlashCommandRegistry.swift`
+4. `ForgeLoop/Sources/ForgeLoopCli/AttachmentStore.swift`
+5. `ForgeLoop/Sources/ForgeLoopCli/CredentialStore.swift`
+6. `ForgeLoop/Sources/ForgeLoopCli/ModelStore.swift`
+
 ## 5) Test Tree Realignment
 
 Target tree under `Tests/ForgeLoopTUITests`:
@@ -174,7 +247,19 @@ Exit criteria:
 
 ## 10) Immediate Next Step
 
-Execute Phase A first and keep it purely structural. Start behavior changes only after tests are green on the new tree.
+Execute the cross-repository extraction in the following order:
+
+1. land terminal-size and tty-flag helpers in `ForgeLoopTUI`
+2. switch `ForgeLoopCli` from local `TUIRunner` to `ForgeLoopTUI.InputReader`
+3. extract a library-owned screen layout renderer
+4. shrink `CodingTUI` and delete the obsolete CLI-local infrastructure files
+
+Keep each slice incremental:
+
+1. library landing first
+2. app adoption second
+3. deletion third
+4. tests and docs in the same change slice
 
 ## 11) Dataflow Companion
 

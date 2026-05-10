@@ -58,6 +58,7 @@ public final class RawTTY: @unchecked Sendable {
         // 最小 raw mode：关闭回显和规范模式
         raw.c_lflag &= ~UInt(ECHO | ICANON | IEXTEN | ISIG)
         raw.c_iflag &= ~UInt(IXON | ICRNL | INPCK | ISTRIP)
+        raw.c_iflag = withUTF8EraseFlag(raw.c_iflag)
         raw.c_oflag &= ~UInt(OPOST)
         raw.c_cflag |= UInt(CS8)
         withUnsafeMutableBytes(of: &raw.c_cc) { buf in

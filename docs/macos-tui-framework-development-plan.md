@@ -207,6 +207,30 @@ Definition of Done:
 
 ## M5 - Componentization and Layout System (6-8 days)
 
+> Status: in progress
+>
+> Already landed:
+> - `Component` protocol, `AnyComponent`, `VStack`, and composition-oriented
+>   frame assembly via `ComposedFrame` / `FrameComposer`
+> - `LayoutBudget` for physical-row-aware tail clipping
+> - reusable interaction primitives: `TextInputState`, `ListPickerState`,
+>   `ListPickerRenderer`, `ModalRenderer`
+> - bridge helpers for current callers: transcript and input-related component
+>   adapters
+>
+> Remaining extraction work:
+> - move the remaining reusable layout layer out of
+>   `ForgeLoop/Sources/ForgeLoopCli/Layout.swift`
+> - replace `ForgeLoopCli`'s local `LayoutRenderer` with a library-owned
+>   screen-layout renderer that outputs `ComposedFrame`
+> - shrink `ForgeLoop/Sources/ForgeLoopCli/CodingTUI.swift` so it becomes a
+>   thin app orchestrator rather than a mixed runtime/controller file
+>
+> Incremental progress (2026-05-10):
+> - duplicate input/runtime glue in
+>   `ForgeLoop/Sources/ForgeLoopCli/TUIRunner.swift` has been removed
+> - terminal-size and tty-flag helpers are library-owned in `ForgeLoopTUI`
+
 Deliverables:
 
 1. component protocol and reusable primitives
