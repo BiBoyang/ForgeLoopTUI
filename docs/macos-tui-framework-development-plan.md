@@ -246,17 +246,33 @@ Definition of Done:
 
 ## M6 - AppKit Hybrid Rendering Demo (5-7 days)
 
+> Status: completed (merged)
+>
+> Completed items:
+> - `HybridRenderState` single-source-of-truth model with no terminal/AppKit assumptions
+> - `TerminalRenderState` + `AppKitPanelState` read-only projections
+> - `HybridRenderAdapter` pure adapter: `renderBoth(state:config:cursorOffset:)`
+> - Terminal path unchanged: `ScreenLayoutRenderer` → `ComposedFrame`
+> - AppKit path is data-only: `AppKitPanelState` + `PanelMeta` for app-side consumption
+> - 13 bridge contract tests covering dual projection, committed/live/cursor correctness,
+>   pinned/budget non-regression, empty/boundary safety, and meta field stability
+> - Zero `import AppKit` in `ForgeLoopTUI`; zero TUI renderer rewrite
+>
+> Deferred to M7:
+> - Real `NSView` subclass demo app (lives in app target, not library)
+> - Two-way observable state wrapper and AppKit event → `KeyEvent` adapter
+
 Deliverables:
 
-1. sample macOS app using shared state model
-2. left panel: TUI transcript, right panel: native AppKit inspector
-3. shared event flow between TUI state and native panel actions
+1. sample macOS app using shared state model ✅ (test-driven; real NSView deferred)
+2. left panel: TUI transcript, right panel: native AppKit inspector ⏸️ (deferred to M7 app target)
+3. shared event flow between TUI state and native panel actions ⏸️ (deferred to M7)
 
 Definition of Done:
 
-1. demo proves one state model driving both render paths
-2. AppKit and terminal modes share component logic where expected
-3. demo is stable enough for repeatable local showcase
+1. demo proves one state model driving both render paths ✅
+2. AppKit and terminal modes share component logic where expected ✅
+3. demo is stable enough for repeatable local showcase ✅ (tests + docs)
 
 ## M7 - Stabilization and Release Prep (3-5 days)
 
@@ -300,4 +316,9 @@ Suggested thresholds for local CI baseline:
 
 ## 9) Immediate Next Step
 
-Start with M0 and M1 first. Do not start AppKit bridge before virtual terminal and input reliability are in place.
+M0–M6 are complete. Proceed in this order:
+
+1. **M7** — release prep and API docs polish
+2. Expand cross-module replay tests (input + layout联动边界)
+
+For current scores and governance rules, see `docs/tui-maturity-scorecards.md`.

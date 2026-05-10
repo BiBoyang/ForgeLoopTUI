@@ -13,8 +13,10 @@ Current status:
   tty flag helpers are now library-owned in `ForgeLoopTUI`; `ForgeLoopCli`
   switched to `ForgeLoopTUI.KeyEvent` + `InputReader`; app-local
   `TUIRunner.swift` was removed.
-- Remaining gap: `ForgeLoopCli` still owns duplicate input/runtime glue and a
-  thin bottom-area layout layer that should live in `ForgeLoopTUI`.
+- Done (M6, 2026-05-11): AppKit hybrid bridge demo landed.
+  - `HybridRenderState` + `HybridRenderAdapter` + `AppKitPanelState`
+  - 13 bridge contract tests, zero TUI renderer rewrite, zero AppKit import in library.
+- Next: M7 release prep and API docs polish.
 
 ## Ordered Migration TODO
 

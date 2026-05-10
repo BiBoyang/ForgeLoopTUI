@@ -247,19 +247,16 @@ Exit criteria:
 
 ## 10) Immediate Next Step
 
-Execute the cross-repository extraction in the following order:
+Cross-repository extraction and M6 bridge demo are complete. The next stage is release prep:
 
-1. land terminal-size and tty-flag helpers in `ForgeLoopTUI`
-2. switch `ForgeLoopCli` from local `TUIRunner` to `ForgeLoopTUI.InputReader`
-3. extract a library-owned screen layout renderer
-4. shrink `CodingTUI` and delete the obsolete CLI-local infrastructure files
+1. **M7** — API docs (DocC), release checklist, and version/tag plan
+2. Expand cross-module replay tests (input + layout联动边界)
 
 Keep each slice incremental:
 
-1. library landing first
-2. app adoption second
-3. deletion third
-4. tests and docs in the same change slice
+1. docs and scorecards first
+2. benchmark baselines second
+3. release prep third
 
 ## 11) Dataflow Companion
 
