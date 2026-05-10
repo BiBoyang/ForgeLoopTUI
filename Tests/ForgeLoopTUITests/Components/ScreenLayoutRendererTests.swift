@@ -304,6 +304,64 @@ struct ScreenLayoutRendererTests {
         #expect(frame.committed == ["b2", "p1", "p2", "a1", "a2"])
     }
 
+    // MARK: - Pinned regression guards (must never regress)
+
+    @Test func testPinnedBudgetSufficientDoesNotReorder() {
+        // When budget is sufficient, pinned must not alter the original order.
+        let layout = ScreenLayout(
+            transcript: ["b1", "b2", "p1", "p2", "a1", "a2"],
+            pinnedTranscriptRange: 2..<4
+        )
+        let config = ScreenLayoutConfig(terminalHeight: 6)
+        let frame = renderer.render(layout: layout, config: config)
+        #expect(frame.committed == ["b1", "b2", "p1", "p2", "a1", "a2"])
+    }
+
+    @Test func testPinnedBudgetTightOutputIsOriginalSubsequence() {
+        // When budget is tight, output must still be a subsequence in original order.
+        let layout = ScreenLayout(
+            transcript: ["b1", "b2", "p1", "p2", "a1", "a2"],
+            pinnedTranscriptRange: 2..<4
+        )
+        let config = ScreenLayoutConfig(terminalHeight: 4)
+        let frame = renderer.render(layout: layout, config: config)
+        // budget 4: pinned (2 lines) + after-tail a2,a1 (2 lines) = 4
+        // before lines b1,b2 dropped.
+        let expected = ["p1", "p2", "a1", "a2"]
+        #expect(frame.committed == expected)
+        // Verify it is a subsequence of the original transcript.
+        var idx = 0
+        for line in frame.committed {
+            while idx < layout.transcript.count && layout.transcript[idx] != line {
+                idx += 1
+            }
+            #expect(idx < layout.transcript.count, "Output must be a subsequence of original transcript")
+            idx += 1
+        }
+    }
+
+    @Test func testPinnedExceedsBudgetTailClipsWithinPinnedOnly() {
+        // When pinned alone exceeds budget, only pinned tail is kept.
+        let layout = ScreenLayout(
+            transcript: ["old1", "pin1", "pin2", "pin3"],
+            pinnedTranscriptRange: 1..<4
+        )
+        let config = ScreenLayoutConfig(terminalHeight: 2)
+        let frame = renderer.render(layout: layout, config: config)
+        #expect(frame.committed == ["pin2", "pin3"])
+    }
+
+    @Test func testInvalidPinnedRangeDegradesToPlainTailClip() {
+        // Invalid range must behave exactly like B1 (no pinned semantics).
+        let layout = ScreenLayout(
+            transcript: ["a", "b", "c", "d"],
+            pinnedTranscriptRange: 10..<20
+        )
+        let config = ScreenLayoutConfig(terminalHeight: 2)
+        let frame = renderer.render(layout: layout, config: config)
+        #expect(frame.committed == ["c", "d"])
+    }
+
     // MARK: - Full assembly equivalence
 
     @Test func testFullAssemblyCommittedPlusLiveEqualsOldFlatOutput() {
