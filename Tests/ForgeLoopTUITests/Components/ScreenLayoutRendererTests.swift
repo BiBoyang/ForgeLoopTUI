@@ -34,12 +34,22 @@ struct ScreenLayoutRendererTests {
         #expect(frame.live.isEmpty)
     }
 
-    @Test func testLongTranscriptNotTruncated() {
+    @Test func testLongTranscriptNotTruncatedWhenBudgetUnlimited() {
         let layout = ScreenLayout(transcript: (0..<100).map { "line\($0)" })
-        let config = ScreenLayoutConfig(terminalHeight: 10)
+        let config = ScreenLayoutConfig(terminalHeight: 100)
         let frame = renderer.render(layout: layout, config: config)
         #expect(frame.committed.count == 100)
         #expect(frame.committed.first == "line0")
+        #expect(frame.committed.last == "line99")
+        #expect(frame.live.isEmpty)
+    }
+
+    @Test func testLongTranscriptTruncatedToTailWhenOverBudget() {
+        let layout = ScreenLayout(transcript: (0..<100).map { "line\($0)" })
+        let config = ScreenLayoutConfig(terminalHeight: 10)
+        let frame = renderer.render(layout: layout, config: config)
+        #expect(frame.committed.count == 10)
+        #expect(frame.committed.first == "line90")
         #expect(frame.committed.last == "line99")
         #expect(frame.live.isEmpty)
     }
@@ -109,14 +119,25 @@ struct ScreenLayoutRendererTests {
         #expect(frame.live == ["", "> "])
     }
 
-    @Test func testPinnedRangeDoesNotAffectOutput() {
+    @Test func testPinnedRangeDoesNotAffectOutputWhenBudgetSufficient() {
+        let layout = ScreenLayout(
+            transcript: ["old1", "old2", "stream1", "stream2"],
+            pinnedTranscriptRange: 2..<4
+        )
+        let config = ScreenLayoutConfig(terminalHeight: 4)
+        let frame = renderer.render(layout: layout, config: config)
+        #expect(frame.committed == ["old1", "old2", "stream1", "stream2"])
+        #expect(frame.live.isEmpty)
+    }
+
+    @Test func testPinnedRangeClippedWithTranscriptWhenBudgetExceeded() {
         let layout = ScreenLayout(
             transcript: ["old1", "old2", "stream1", "stream2"],
             pinnedTranscriptRange: 2..<4
         )
         let config = ScreenLayoutConfig(terminalHeight: 3)
         let frame = renderer.render(layout: layout, config: config)
-        #expect(frame.committed == ["old1", "old2", "stream1", "stream2"])
+        #expect(frame.committed == ["old2", "stream1", "stream2"])
         #expect(frame.live.isEmpty)
     }
 
