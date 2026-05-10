@@ -215,6 +215,95 @@ struct ScreenLayoutRendererTests {
         #expect(frame.cursorOffset == nil)
     }
 
+    // MARK: - Pinned protection
+
+    @Test func testPinnedPreservedWhenBudgetSufficient() {
+        let layout = ScreenLayout(
+            transcript: ["old1", "old2", "pin1", "pin2"],
+            pinnedTranscriptRange: 2..<4
+        )
+        let config = ScreenLayoutConfig(terminalHeight: 4)
+        let frame = renderer.render(layout: layout, config: config)
+        #expect(frame.committed == ["old1", "old2", "pin1", "pin2"])
+    }
+
+    @Test func testPinnedPreservedBySacrificingNonPinnedWhenBudgetTight() {
+        // Budget = 3, pinned = 2 lines (pin1, pin2). Non-pinned = 2 lines (old1, old2).
+        // Expected: drop oldest non-pinned head (old1), keep [old2, pin1, pin2].
+        let layout = ScreenLayout(
+            transcript: ["old1", "old2", "pin1", "pin2"],
+            pinnedTranscriptRange: 2..<4
+        )
+        let config = ScreenLayoutConfig(terminalHeight: 3)
+        let frame = renderer.render(layout: layout, config: config)
+        #expect(frame.committed == ["old2", "pin1", "pin2"])
+    }
+
+    @Test func testPinnedTailClippedWhenPinnedAloneExceedsBudget() {
+        // Budget = 1, pinned = 2 lines. Pinned itself must be tail-clipped.
+        let layout = ScreenLayout(
+            transcript: ["old1", "pin1", "pin2"],
+            pinnedTranscriptRange: 1..<3
+        )
+        let config = ScreenLayoutConfig(terminalHeight: 1)
+        let frame = renderer.render(layout: layout, config: config)
+        #expect(frame.committed == ["pin2"])
+    }
+
+    @Test func testInvalidPinnedRangeSafelyDegradesToNonPinnedPath() {
+        // Range out of bounds → behave like B1 (plain tail clip).
+        let layout = ScreenLayout(
+            transcript: ["a", "b", "c"],
+            pinnedTranscriptRange: 5..<10
+        )
+        let config = ScreenLayoutConfig(terminalHeight: 2)
+        let frame = renderer.render(layout: layout, config: config)
+        #expect(frame.committed == ["b", "c"])
+    }
+
+    @Test func testEmptyPinnedRangeDegradesToNonPinnedPath() {
+        let layout = ScreenLayout(
+            transcript: ["a", "b", "c"],
+            pinnedTranscriptRange: 2..<2
+        )
+        let config = ScreenLayoutConfig(terminalHeight: 2)
+        let frame = renderer.render(layout: layout, config: config)
+        #expect(frame.committed == ["b", "c"])
+    }
+
+    @Test func testPinnedDoesNotAffectPathWithNoTranscript() {
+        let layout = ScreenLayout(
+            header: ["H"],
+            status: ["S"],
+            input: ["> "],
+            pinnedTranscriptRange: 0..<5 // irrelevant because transcript is empty
+        )
+        let config = ScreenLayoutConfig(terminalHeight: 24)
+        let frame = renderer.render(layout: layout, config: config)
+        #expect(frame.committed == ["H", "", "S"])
+        #expect(frame.live == ["", "> "])
+    }
+
+    @Test func testPinnedWithAfterContentPreservesOriginalOrder() {
+        // Transcript: [before][pinned][after]
+        // Budget tight but enough for pinned + some non-pinned.
+        // Non-pinned closest to pinned (after-tail, then before-tail) are kept,
+        // but final output must remain in original index order.
+        let layout = ScreenLayout(
+            transcript: ["b1", "b2", "p1", "p2", "a1", "a2"],
+            pinnedTranscriptRange: 2..<4
+        )
+        let config = ScreenLayoutConfig(terminalHeight: 5)
+        let frame = renderer.render(layout: layout, config: config)
+        // non-pinned = b1,b2,a1,a2 (4 lines) + pinned = p1,p2 (2 lines) = 6 total
+        // budget 5 → keep pinned (2), then fill 3 from non-pinned closest to pinned:
+        //   after-tail: a2 (idx 5), a1 (idx 4) — both fit (2 lines)
+        //   before-tail: b2 (idx 1) — fits (1 line)
+        //   b1 (idx 0) — dropped
+        // Final order must be original index ascending: b2, p1, p2, a1, a2
+        #expect(frame.committed == ["b2", "p1", "p2", "a1", "a2"])
+    }
+
     // MARK: - Full assembly equivalence
 
     @Test func testFullAssemblyCommittedPlusLiveEqualsOldFlatOutput() {
