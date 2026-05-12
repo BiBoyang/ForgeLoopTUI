@@ -199,7 +199,5 @@ See `docs/semver-and-api-stability.md` for the full policy and `docs/public-api-
 - `docs/public-api-surface.md` — complete public API catalog with stability tiers
 - `docs/semver-and-api-stability.md` — SemVer policy and breaking-change definitions
 - `docs/release-checklist.md` — release validation steps
-- `docs/source-structure-and-reuse-refactor-plan.md` — file ownership and migration map
-- `docs/macos-tui-framework-development-plan.md` — milestone plan and acceptance criteria
 - `docs/module-dataflow-and-dependency-map.md` — ASCII dataflow diagrams
 - `docs/migration-guide-for-forgeloopcli.md` — concrete migration notes for `ForgeLoopCli`

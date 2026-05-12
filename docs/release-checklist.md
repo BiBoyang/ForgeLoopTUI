@@ -30,10 +30,11 @@ Run every command. All must pass.
 - [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && swift test --filter ANSIParserTests`
 - [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && swift test --filter VirtualTerminalTests`
 - [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && swift test --filter HybridRenderAdapterTests`
-- [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && swift test --filter Integration`
+- [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && swift test --filter CapabilityEndToEndTests`
 - [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && swift test --filter PublicAPISmokeTests`
 - [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoop && swift build`
 - [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoop && swift test --filter ScreenLayoutIntegrationTests`
+- [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && ./Scripts/cross-repo-gate.sh --quick`
 
 ---
 
@@ -45,8 +46,6 @@ Run every command. All must pass.
 - [ ] `docs/migration-guide-for-forgeloopcli.md` has no stale "pending" items that are now done.
 - [ ] `docs/public-api-surface.md` lists every new `public` type added since the last release.
 - [ ] `docs/semver-and-api-stability.md` has no contradictions with the actual API surface.
-- [ ] `docs/macos-tui-framework-development-plan.md` milestone status is current.
-- [ ] `docs/source-structure-and-reuse-refactor-plan.md` cross-repo extraction status is current.
 - [ ] `todo.md` reflects the current focus.
 
 ---
@@ -67,8 +66,14 @@ Run every command. All must pass.
 
 - [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoop && swift test --filter PerformanceBaselineTests`
 - [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoop && swift test --filter PerformanceGateTests`
+- [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && ./Scripts/cross-repo-gate.sh --full`
 - [ ] Compare p50 results against the last baseline snapshot in `ForgeLoop/docs/perf-baseline-snapshots.md`.
-- [ ] If any p50 regresses >10%, document the reason in the release notes or block the release.
+- [ ] If any p50 regresses `>10%`:
+  - **必须阻塞发布**，或
+  - **给出已批准的例外记录**：linked issue + time-box + rollback plan + maintainer 书面批准（见 `docs/post-m7-maintenance-protocol.md` §7.3）。
+  - 禁止通过放宽阈值来“放过”回归。
+- [ ] 若存在 `>5%` 且 `<=10%` 的 warn 级退化，在 release notes 中说明原因并知会 maintainer。
+- [ ] 附上前一次 `--full` 演练报告（`docs/pre-release-drill-YYYY-MM-DD.md`），或本次 RC 新产出的报告。报告必须包含：gate 结果汇总、风险分级、发布决策（go/no-go）。
 
 ---
 

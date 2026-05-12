@@ -192,7 +192,66 @@ struct HybridRenderAdapterTests {
         #expect(frame.committed.last == "line9999")
     }
 
-    // MARK: 6) Dual projection consistency (same source, no divergence)
+    // MARK: 6) Degradation paths
+
+    @Test("negative width budget returns empty frame")
+    func testNegativeWidthBudgetReturnsEmptyFrame() {
+        let state = HybridRenderState(transcriptLines: ["a", "b"])
+        let config = ScreenLayoutConfig(terminalHeight: 10, terminalWidth: -1, showHeader: false)
+
+        let frame = adapter.renderTerminal(state: state, config: config)
+
+        #expect(frame.committed.isEmpty)
+        #expect(frame.live.isEmpty)
+        #expect(frame.cursorOffset == nil)
+    }
+
+    @Test("negative height budget returns empty frame")
+    func testNegativeHeightBudgetReturnsEmptyFrame() {
+        let state = HybridRenderState(transcriptLines: ["a", "b"])
+        let config = ScreenLayoutConfig(terminalHeight: -5, terminalWidth: 80, showHeader: false)
+
+        let frame = adapter.renderTerminal(state: state, config: config)
+
+        #expect(frame.committed.isEmpty)
+        #expect(frame.live.isEmpty)
+        #expect(frame.cursorOffset == nil)
+    }
+
+    // MARK: 7) PanelMeta new fields
+
+    @Test("appKit projection preserves subtitle and accessory")
+    func testAppKitProjectionPreservesSubtitleAndAccessory() {
+        let meta = PanelMeta(
+            title: "T",
+            summary: "S",
+            statusBadge: "B",
+            isActive: true,
+            subtitle: "gpt-4o",
+            accessoryBadge: "Beta"
+        )
+        let state = HybridRenderState(panelMeta: meta)
+        let appKit = adapter.appKitProjection(of: state)
+
+        #expect(appKit.meta.subtitle == "gpt-4o")
+        #expect(appKit.meta.accessoryBadge == "Beta")
+    }
+
+    @Test("appKit projection nil subtitle and accessory does not affect existing behavior")
+    func testAppKitProjectionNilSubtitleAndAccessory() {
+        let meta = PanelMeta(title: "T", summary: "S", statusBadge: "B", isActive: false)
+        let state = HybridRenderState(panelMeta: meta)
+        let appKit = adapter.appKitProjection(of: state)
+
+        #expect(appKit.meta.title == "T")
+        #expect(appKit.meta.summary == "S")
+        #expect(appKit.meta.statusBadge == "B")
+        #expect(appKit.meta.isActive == false)
+        #expect(appKit.meta.subtitle == nil)
+        #expect(appKit.meta.accessoryBadge == nil)
+    }
+
+    // MARK: 8) Dual projection consistency (same source, no divergence)
 
     @Test func testDualProjectionTranscriptConsistency() {
         let state = HybridRenderState(

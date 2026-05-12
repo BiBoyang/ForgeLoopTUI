@@ -341,7 +341,34 @@ swift run
 Then do one manual terminal smoke pass.
 For the manual pass, keep `Examples/Fixtures/long-transcript.md` open as a reference text set.
 
-## 7. Failure Triage
+## 7. Cross-Repo Gate (Post-M7)
+
+After M7, release confidence depends on both repositories (`ForgeLoopTUI` and
+`ForgeLoop`). Run the cross-repo gate from `ForgeLoopTUI`:
+
+```bash
+cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI
+./Scripts/cross-repo-gate.sh --quick
+```
+
+Use `--quick` for routine slices (build + key integration/smoke checks).
+
+For pre-release rehearsal, use:
+
+```bash
+cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI
+./Scripts/cross-repo-gate.sh --full
+```
+
+`--full` includes performance gate filters in `ForgeLoop` in addition to quick checks.
+
+If your `ForgeLoop` checkout is not at the default sibling path, override it:
+
+```bash
+FORGELOOP_ROOT=/absolute/path/to/ForgeLoop ./Scripts/cross-repo-gate.sh --full
+```
+
+## 8. Failure Triage
 
 When something fails, use this rule of thumb:
 

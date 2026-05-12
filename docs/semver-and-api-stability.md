@@ -58,6 +58,16 @@ See `docs/public-api-surface.md` for the per-type stability assignment.
 | **Internal-detail** | None | Not applicable |
 | **Deprecated** | None (scheduled removal) | Already deprecated |
 
+### 3.1 Provisional API evolution gate
+
+Before evolving a **Provisional** API (adding methods, changing behavior, or graduating to Stable), the following must be satisfied:
+
+1. **Real-world evidence**: at least 2 distinct callers or a documented pain point.
+2. **Contract test coverage**: new/changed behavior has dedicated tests; existing contract tests stay green.
+3. **Cross-repo gate**: `./Scripts/cross-repo-gate.sh --quick` passes.
+
+Example: `PromptHistory` (`docs/prompt-history-api-decision.md`) follows this gate. Capacity limits, dedup, persistence, and multi-group history are all deferred until evidence and tests materialize.
+
 ---
 
 ## 4. Deprecation policy
@@ -105,7 +115,7 @@ swift test --filter VirtualTerminalTests
 swift test --filter HybridRenderAdapterTests
 
 # 7. Integration / smoke
-swift test --filter Integration
+swift test --filter CapabilityEndToEndTests
 swift test --filter PublicAPISmokeTests
 ```
 

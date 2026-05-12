@@ -9,11 +9,6 @@ This document answers one core architecture question:
 
 "Through which modules does a TUI render event pass, from ANSI handling to final screen output?"
 
-It complements:
-
-1. `docs/macos-tui-framework-development-plan.md` (milestone and target architecture)
-2. `docs/source-structure-and-reuse-refactor-plan.md` (directory and migration plan)
-
 This file focuses on runtime collaboration and dependency direction.
 
 ## 2) High-Level Dependency Graph

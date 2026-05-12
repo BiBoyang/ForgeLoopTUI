@@ -44,6 +44,37 @@ public struct HybridRenderState: Sendable, Equatable {
     }
 }
 
+// MARK: - Panel Metadata Protocol
+
+/// 面板元数据提供者协议。
+///
+/// AppKit 应用侧实现此协议，Bridge 层通过协议消费元数据，
+/// 无需了解具体来源（窗口标题、绑定、用户偏好等）。
+///
+/// ## 示例
+/// ```swift
+/// struct MyPanelInfo: PanelMetadataProviding {
+///     var title: String { "My AI Session" }
+///     var summary: String { "12 messages" }
+///     var statusBadge: String { "Streaming" }
+///     var isActive: Bool { true }
+///     var subtitle: String? { "gpt-4o · 3.2k tokens" }
+/// }
+/// ```
+public protocol PanelMetadataProviding: Sendable {
+    var title: String { get }
+    var summary: String { get }
+    var statusBadge: String { get }
+    var isActive: Bool { get }
+    var subtitle: String? { get }
+    var accessoryBadge: String? { get }
+}
+
+extension PanelMetadataProviding {
+    public var subtitle: String? { nil }
+    public var accessoryBadge: String? { nil }
+}
+
 // MARK: - Panel Metadata
 
 /// AppKit-facing metadata extracted from the shared state.
@@ -63,16 +94,54 @@ public struct PanelMeta: Sendable, Equatable {
     /// Whether the panel should indicate activity (spinner, pulsating dot, etc).
     public var isActive: Bool
 
+    /// 副标题（如模型名、token 数等上下文信息）
+    public var subtitle: String?
+
+    /// 辅助标识（如 "Beta"、"Pro" 等标签）
+    public var accessoryBadge: String?
+
     public init(
         title: String = "",
         summary: String = "",
         statusBadge: String = "",
-        isActive: Bool = false
+        isActive: Bool = false,
+        subtitle: String? = nil,
+        accessoryBadge: String? = nil
     ) {
         self.title = title
         self.summary = summary
         self.statusBadge = statusBadge
         self.isActive = isActive
+        self.subtitle = subtitle
+        self.accessoryBadge = accessoryBadge
+    }
+}
+
+extension PanelMeta: PanelMetadataProviding {}
+
+// MARK: - Panel Metadata Bridge
+
+extension PanelMeta {
+    /// 从任意 `PanelMetadataProviding` 提供者创建 `PanelMeta`。
+    ///
+    /// 这是协议到具体值类型的桥接入口，应用侧实现协议后
+    /// 通过此构造器即可生成 Bridge 层可消费的 `PanelMeta`。
+    public init<P: PanelMetadataProviding>(_ provider: P) {
+        self.init(
+            title: provider.title,
+            summary: provider.summary,
+            statusBadge: provider.statusBadge,
+            isActive: provider.isActive,
+            subtitle: provider.subtitle,
+            accessoryBadge: provider.accessoryBadge
+        )
+    }
+}
+
+extension HybridRenderState {
+    /// 从 `PanelMetadataProviding` 提供者更新面板元数据。
+    public mutating func updatePanelMeta<P: PanelMetadataProviding>(from provider: P) {
+        panelMeta = PanelMeta(provider)
     }
 }
 

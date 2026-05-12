@@ -197,12 +197,6 @@ For design rationale and change notes, see `docs/markdown-table-rendering.md`.
 
 ## Roadmap and Architecture Docs
 
-- `docs/macos-tui-framework-development-plan.md`
-  - end-to-end milestone plan for turning `ForgeLoopTUI` into a reusable macOS-first framework
-  - includes acceptance criteria, test strategy, and performance gates
-- `docs/source-structure-and-reuse-refactor-plan.md`
-  - source tree and test tree refactor plan
-  - file migration map and phased execution strategy for cleaner module boundaries
 - `docs/module-dataflow-and-dependency-map.md`
   - module collaboration map and dependency direction rules
   - includes an ASCII pipeline for "event -> ANSI handling -> terminal output"

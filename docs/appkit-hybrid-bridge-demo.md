@@ -1,4 +1,4 @@
-# AppKit Hybrid Bridge Demo (M6)
+# AppKit Hybrid Bridge (P0 — Reusable)
 
 Date: 2026-05-11  
 Scope: `ForgeLoopTUI/Bridge/AppKit` — minimal bridge proving one state model drives both TUI and AppKit projections.
@@ -165,6 +165,13 @@ public struct HybridRenderAdapter: Sendable {
 | Terminal path regression: `ScreenLayoutRendererTests` | ✅ |
 | Integration path regression: `ScreenLayoutIntegrationTests` | ✅ |
 | Documentation (this file + plan updates) | ✅ |
+| `AppKitEventAdapter` (NSEvent → KeyEvent) | ✅ |
+| `HybridObservableState` (`@Observable` wrapper, `@MainActor`) | ✅ |
+| `PanelMetadataProviding` protocol + bridge to `PanelMeta` | ✅ |
+| `PanelMeta` rich fields (subtitle, accessoryBadge) | ✅ |
+| Adapter degradation paths | ✅ |
+| Input adapter tests (18 contract tests) | ✅ |
+| Observable state tests (14 lifecycle tests) | ✅ |
 
 ---
 
@@ -172,20 +179,21 @@ public struct HybridRenderAdapter: Sendable {
 
 | Item | Reason |
 |---|---|
-| Real `NSView` subclass | M6 is data-only bridge; AppKit views live in app target |
-| AppKit event → `KeyEvent` adapter | Needs real window/runloop; deferred to productisation |
-| Live two-way binding (AppKit → state) | Requires observable state wrapper; out of scope for demo |
+| Real `NSView` subclass | P0 is data-only bridge; AppKit views live in app target |
 | Animation / transition policies | Product UI concern, not bridge concern |
 | Accessibility labels / NSAccessibility | Product UI concern |
 
 ---
 
-## 7) Next Steps (M7)
+## 7) Next Steps (P1 / M7)
 
-1. **AppKit target demo app** — Create a minimal macOS app in `ForgeLoop` (not `ForgeLoopTUI`) that imports `ForgeLoopTUI` and renders `AppKitPanelState` into `NSTextView` + `NSStackView`.
-2. **Observable state wrapper** — Evaluate `@Observable` or `Combine` wrapper around `HybridRenderState` for two-way binding.
-3. **Event bridge** — Map `NSEvent` key actions back to `ForgeLoopTUI.KeyEvent` for unified input handling.
-4. **Release engineering** — Tag `ForgeLoopTUI`, publish API docs (DocC), finalise integration guide.
+P0 已完成双向桥接闭环（NSEvent→KeyEvent + @MainActor Observable state + 降级路径 + PanelMetadataProviding→PanelMeta 桥接入口）。P0 不引入新的公开错误 API。
+
+后续方向：
+1. **真实 AppKit 应用验证** — 在 `ForgeLoop`（非 `ForgeLoopTUI`）中创建最小 macOS 应用，将 `AppKitPanelState` 渲染到 `NSTextView` + `NSStackView`。
+2. **Accessibility** — 为 AppKit 面板补充 `NSAccessibility` 标签与焦点管理。
+3. **动画策略** — 产品 UI 层面的过渡与刷新策略。
+4. **发布工程** — 为 `ForgeLoopTUI` 打 tag，发布 DocC API 文档，完善集成指南。
 
 ---
 
@@ -193,4 +201,9 @@ public struct HybridRenderAdapter: Sendable {
 
 - `Sources/ForgeLoopTUI/Bridge/AppKit/HybridRenderState.swift`
 - `Sources/ForgeLoopTUI/Bridge/AppKit/HybridRenderAdapter.swift`
+- `Sources/ForgeLoopTUI/Bridge/AppKit/AppKitEventAdapter.swift`
+- `Sources/ForgeLoopTUI/Bridge/AppKit/HybridObservableState.swift`
+
 - `Tests/ForgeLoopTUITests/Bridge/HybridRenderAdapterTests.swift`
+- `Tests/ForgeLoopTUITests/Bridge/AppKitEventAdapterTests.swift`
+- `Tests/ForgeLoopTUITests/Bridge/HybridObservableStateTests.swift`

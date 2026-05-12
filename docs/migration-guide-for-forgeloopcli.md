@@ -55,13 +55,25 @@ let frame = CodingTUIFrameBuilder.build(input: .init(
 
 `CodingTUIFrameBuilder` is a thin app-side wrapper around `ScreenLayoutRenderer`.  It keeps app-specific state mapping in the CLI layer while removing duplicated "layout → render" boilerplate.
 
+### 1.5 InputHistory → PromptHistory — extracted to library
+
+| Before (app-owned) | After (library-owned) |
+|--------------------|-----------------------|
+| `ForgeLoop/Sources/ForgeLoopCli/CodingTUI.swift` contained a local `struct InputHistory` | `Sources/ForgeLoopTUI/Input/PromptHistory.swift` |
+| `var inputHistory = InputHistory()` in `runCodingTUIInternal` | `var inputHistory = PromptHistory()` (same call-site, no semantic change) |
+
+`PromptHistory` is a minimal input-history navigation struct with `commit` / `prev` / `next` / `reset` / `isAtCurrent`.
+`ForgeLoopCli` now composes it from the library instead of owning a local implementation.
+
+**Action required**: none.  The type change is a drop-in replacement; all call-sites use identical method signatures.
+
 ---
 
 ## 2. Unfinished Items
 
 | Item | Status | Next Step |
 |------|--------|-----------|
-| `InputHistory` generic extraction | **Pending** | Evaluate after layout/input migration stabilises; if generic, extract as `PromptHistory` in a later slice |
+| `InputHistory` → `PromptHistory` extraction | **Done** (2026-05-11) | Extracted as `PromptHistory` in `ForgeLoopTUI/Input/PromptHistory.swift`; CLI adopts via drop-in replacement (see §1.5) |
 | `AgentEventRenderAdapter` semantic cleanup | **Pending** | Not a migration blocker; can be refined when `CoreRenderEvent` vocabulary stabilises |
 | Performance regression gates | **Pending** | See F1; needs benchmark baseline snapshots and statistical sampling strategy |
 | Cross-module replay tests (input + layout) | **Pending** | See F1; expand `Integration/` test tree in `ForgeLoopTUI` and `ForgeLoopCliTests` |
@@ -83,7 +95,7 @@ let frame = CodingTUIFrameBuilder.build(input: .init(
    Only flatten a `ComposedFrame` to `RenderLoop` when `live.isEmpty && cursorOffset == nil && priority == .normal`.  All other frames must go directly to `TUI.render(frame:)`.
 
 5. **Update docs in the same slice as code changes**  
-   `README.md`, `source-structure-and-reuse-refactor-plan.md`, and this file should be kept in sync with every public-API or boundary change.
+   `README.md` and this file should be kept in sync with every public-API or boundary change.
 
 ---
 

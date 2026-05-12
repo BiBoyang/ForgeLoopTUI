@@ -90,6 +90,7 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 | `TranscriptComponent` | `struct` | **Stable** | Low | Wraps transcript lines as `Component` |
 | `TextInputComponent` | `struct` | **Stable** | Low | Stateless prompt+value component |
 | `ListPickerComponent` | `struct` | **Stable** | Low | Stateless list picker component |
+| `PromptHistory` | `struct` | **Provisional** | Low | Minimal input history navigation (commit / prev / next / reset / isAtCurrent); frozen for current phase — see `docs/prompt-history-api-decision.md` for evolution criteria |
 
 **Consumer dependency points:**
 - `TextInputState.handle(_:)` — process key actions.
@@ -151,10 +152,13 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 | Type | Kind | Stability | Breaking-change risk | Migration advice |
 |------|------|-----------|----------------------|------------------|
 | `HybridRenderState` | `struct` | **Provisional** | Medium | New bridge; may gain fields for richer AppKit metadata |
-| `PanelMeta` | `struct` | **Provisional** | Medium | AppKit metadata shape may expand |
+| `PanelMeta` | `struct` | **Provisional** | Medium | AppKit metadata shape may expand; `subtitle` / `accessoryBadge` added in P0, default nil, backward compatible |
 | `TerminalRenderState` | `struct` | **Provisional** | Low | Thin wrapper around `ScreenLayout` |
 | `AppKitPanelState` | `struct` | **Provisional** | Medium | Panel shape may expand for new UI regions |
 | `HybridRenderAdapter` | `struct` | **Provisional** | Low | Pure adapter; new convenience methods may be added |
+| `AppKitEventAdapter` | `struct` | **Provisional** | Low | NSEvent → KeyEvent adapter; for use in NSView.keyDown(with:) |
+| `HybridObservableState` | `class` | **Provisional** | Low | `@Observable` + `@MainActor` wrapper; requires macOS 14+; UI state container, not cross-thread Sendable |
+| `PanelMetadataProviding` | `protocol` | **Provisional** | Low | Implement on app-side panel data; bridge to `PanelMeta` via `PanelMeta(_:)` init |
 
 **Consumer dependency points:**
 - `HybridRenderAdapter.renderBoth(state:config:cursorOffset:)` — dual projection entry point.
@@ -218,7 +222,7 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 | Stability level | Count | Recommendation |
 |-----------------|-------|----------------|
 | **Stable** | ~55 | Safe to depend on; breaking changes require MAJOR bump |
-| **Provisional** | ~10 | Safe to adopt; monitor release notes for MINOR evolutions |
+| **Provisional** | ~15 | Safe to adopt; monitor release notes for MINOR evolutions |
 | **Internal-detail** | ~20 | Avoid direct dependency; may change without SemVer protection |
 | **Deprecated** | 3 | Migrate to `CoreRenderEvent` / `TranscriptRenderer.applyCore(_:)` |
 

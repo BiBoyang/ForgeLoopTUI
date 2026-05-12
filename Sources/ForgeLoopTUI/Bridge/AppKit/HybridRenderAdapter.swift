@@ -65,6 +65,11 @@ public struct HybridRenderAdapter: Sendable {
         config: ScreenLayoutConfig,
         cursorOffset: Int? = nil
     ) -> ComposedFrame {
+        // 防御：零或负终端尺寸不崩溃，返回空帧
+        guard config.terminalWidth > 0, config.terminalHeight > 0 else {
+            return ComposedFrame(committed: [], live: [], cursorOffset: nil)
+        }
+
         let projection = terminalProjection(of: state, config: config, cursorOffset: cursorOffset)
         return ScreenLayoutRenderer().render(
             layout: projection.layout,
@@ -86,6 +91,7 @@ public struct HybridRenderAdapter: Sendable {
             inputLines: state.inputLines,
             statusLines: state.statusLines,
             queueLines: state.queueLines,
+            // 降级：panelMeta 为 nil 时使用空值默认，保证 AppKit 投影总是可用的
             meta: state.panelMeta ?? PanelMeta(),
             inputFocused: !state.inputLines.isEmpty
         )
