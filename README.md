@@ -105,6 +105,10 @@ Low-level logical-line and terminal-metric helpers are kept as implementation de
   - lightweight title/body/footer modal framing
 - `ListPickerState` + `ListPickerRenderer`
   - arrow-key style selection state and renderer for modal pickers such as `/model`
+- `PromptHistory`
+  - minimal input history for up/down key navigation (`commit` / `prev` / `next` / `reset` / `isAtCurrent`)
+  - purely a navigation primitive — carries no business semantics (no conversation-id, no session-key, no persistence)
+  - lives in `ForgeLoopTUI`; CLI consumers compose it, never re-implement it
 
 Example:
 
@@ -225,10 +229,11 @@ For a fuller testing workflow, see `TESTING.md`.
 
 ## Examples
 
-There are two runnable local example packages:
+There are three runnable local example packages:
 
 - `Examples/MinimalStreamingDemo`: stability / public-API smoke example
 - `Examples/MarkdownShowcase`: Markdown presentation example
+- `Examples/MinimalAIApp`: minimal interactive AI terminal app (prompt, streaming, cancel, history)
 
 Run the smoke example with:
 
@@ -249,6 +254,13 @@ The smoke example shows:
 - assistant streaming with append-only transcript deltas
 - final flush on `messageEnd`
 - a simple tool start/end placeholder flow
+
+Run the minimal AI app with:
+
+```bash
+cd Examples/MinimalAIApp
+swift run
+```
 
 Run the Markdown presentation example with:
 
