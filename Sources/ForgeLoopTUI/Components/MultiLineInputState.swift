@@ -48,11 +48,14 @@ public struct MultiLineInputRenderResult: Sendable, Equatable {
 /// what the user sees on screen for long single-line input or wide CJK
 /// content while keeping the buffer model line-based.
 ///
-/// Width is counted by character count (one cell per `Character`). Mixed-CJK
-/// content using wide cells is supported by the higher-level renderer; the
-/// cursor model itself is character-indexed.
+/// Width is counted by **visible cells** via ``visibleWidth(_:)``: ASCII
+/// glyphs take 1 cell, full-width CJK glyphs take 2 cells, control glyphs
+/// take 0 cells. The internal cursor index (``MultiLineInputState/cursorColumn``)
+/// is still a character index — the viewport only changes how `moveUp` /
+/// `moveDown` map between *visible columns* and character indices, so
+/// `Viewport` is purely additive and does not affect any other action.
 ///
-/// 稳定等级: Provisional。
+/// 稳定等级: Stable。
 public struct Viewport: Sendable, Equatable {
     public let width: Int
 

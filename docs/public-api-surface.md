@@ -91,7 +91,7 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 | `TextInputRenderResult` | `struct` | **Stable** | Low | `.line` + `.cursorOffset` |
 | `MultiLineInputState` | `struct` | **Stable** | Low | Multi-line editor; action set may expand; optional `viewport` makes `moveUp`/`moveDown` walk by visual rows |
 | `MultiLineInputAction` | `enum` | **Stable** | Low | Actions (insert, insertText, insertNewline, backspace, delete, move, kill, replace, clear) |
-| `Viewport` | `struct` | **Stable** | Low | Optional soft-wrap viewport hint for `MultiLineInputState` (currently width-only) |
+| `Viewport` | `struct` | **Stable** | Low | Optional soft-wrap viewport hint for `MultiLineInputState` (width-only). Visual geometry is computed via `visibleWidth(_:)`, so mixed ASCII/CJK lines wrap and navigate by visible cells, not character indices. |
 | `CursorPlacement` | `struct` | **Stable** | Very low | 2D cursor anchor (`up` rows, `offset` columns) |
 | `MultiLineInputRenderResult` | `struct` | **Stable** | Low | `.lines` + `.cursor` (CursorPlacement) |
 | `ListPickerState` | `struct` | **Stable** | Low | Selection state machine |

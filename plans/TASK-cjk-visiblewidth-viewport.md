@@ -2,7 +2,7 @@
 
 Date: 2026-05-13  
 Scope: `MultiLineInputState` visual-row navigation (`moveUp` / `moveDown`)  
-Status: Planned (implementation not started)
+Status: **Completed** (Step A + Step B + Step C all done; landed in `1d3cfa5`)
 
 ---
 
@@ -28,9 +28,9 @@ unchanged.
 
 ## Milestones and Steps
 
-### Step A — Test Matrix (Failing-First)
+### Step A — Test Matrix (Failing-First) — ✅ Done
 
-Add focused tests in `Tests/ForgeLoopTUITests/Components/MultiLineInputTests.swift`
+Added focused tests in `Tests/ForgeLoopTUITests/Components/MultiLineInputTests.swift`
 for viewport visual moves with wide-cell text:
 
 1. Single-line mixed-width wrap (`"ab中文cd"` with narrow viewport).
@@ -43,9 +43,12 @@ DoD:
 - New tests are deterministic and document expected visible-row semantics.
 - Existing viewport tests remain green.
 
-### Step B — Geometry Refactor (Internal Only)
+**Result:** 4 contract tests added, all expectedly failing against the old
+character-count implementation. Original 32 tests remained green throughout.
 
-Refactor `MultiLineInputState` internal visual movement helpers to:
+### Step B — Geometry Refactor (Internal Only) — ✅ Done
+
+Refactored `MultiLineInputState` internal visual movement helpers to:
 
 1. Compute cursor visual column from prefix `visibleWidth`.
 2. Compute line visual row count from `visibleWidth(line)` + viewport width.
@@ -57,7 +60,11 @@ DoD:
 - No public signature changes.
 - All viewport + CJK tests pass.
 
-### Step C — Regression and Performance Guard
+**Result:** Introduced `preferredVisualColumn` (refresh-on-demand),
+`visibleColumn(in:charIndex:)` helper, and visible-col ↔ char-index lookup;
+landed in commit `1d3cfa5`. Public API surface unchanged.
+
+### Step C — Regression and Performance Guard — ✅ Done
 
 Run:
 
@@ -73,6 +80,10 @@ DoD:
 - `PerformanceBaselineTests` pass without relaxing thresholds.
 - Full `swift test` remains green.
 
+**Result:** All three commands pass. The four mixed-width contract tests now
+report the expected `cursorColumn` (2 / 4 / 2 / 2) on the corresponding cases.
+Existing thresholds in `PerformanceBaselineTests` were not relaxed.
+
 ---
 
 ## Risk Notes
@@ -82,9 +93,19 @@ DoD:
    bounded carefully.
 3. Behavior changes are user-visible; contract tests must define exact intent.
 
+## Verification Summary (post-landing)
+
+- Contract tests: `testViewportMoveUpWithinMixedWidthLineUsesVisibleColumn`,
+  `testViewportMoveUpAcrossBoundaryPreservesVisibleColumnForMixedWidth`,
+  `testViewportMoveDownAcrossBoundaryUsesVisibleColumnForMixedWidth`,
+  `testViewportResizeThenMoveUsesNewVisibleGeometryForMixedWidth` — all green.
+- Doc / source-comment alignment closed under Slice-1 (this iteration).
+- Mixed-width performance baseline tracked under Slice-2 follow-up.
+
 ---
 
 ## Rollback Point
 
-If regression appears, rollback only the Step B commit and keep Step A tests as
-specification guards (marking expected failures temporarily if needed).
+If regression appears, rollback only the Step B commit (`1d3cfa5`) and keep
+Step A tests as specification guards (marking expected failures temporarily
+if needed).

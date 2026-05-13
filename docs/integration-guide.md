@@ -348,7 +348,8 @@ input.setViewport(Viewport(width: terminalWidth - promptWidth))
 Behaviour notes:
 
 - The viewport hint is consumed only by `.moveUp` and `.moveDown`. Other actions (insert, backspace, kill, move-to-line-start/end) ignore it.
-- Visual moves preserve a *preferred visual column* across rows, mirroring user expectations from desktop editors.
+- Visual moves preserve a *preferred visible column* across rows, mirroring user expectations from desktop editors.
+- Visual geometry is computed with `visibleWidth(_:)`, so wide CJK glyphs occupy 2 cells, ASCII 1 cell, and control glyphs 0 cells. Mixed-width lines such as `"ab中文cd"` therefore wrap at the exact cell each glyph occupies, and the column the cursor lands on after `moveUp` / `moveDown` is the visible column — not the character index.
 - Pass `nil` (or call `setViewport(nil)`) to revert to logical-row behaviour.
 - On terminal resize, update the viewport with the new width — the next `.moveUp` / `.moveDown` will use the new wrap geometry without any extra recomputation.
 

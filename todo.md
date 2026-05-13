@@ -19,10 +19,19 @@ Ongoing maintenance and stabilization of `ForgeLoopTUI` as a reusable TUI framew
    - Swift Package Index integration
    - Additional example packages
 
-4. **Next iteration: CJK viewport precision**
-   - Implement `visibleWidth`-aware viewport vertical navigation in `MultiLineInputState`.
-   - Add mixed-width contract tests before algorithm changes.
-   - Plan: `plans/TASK-cjk-visiblewidth-viewport.md`.
+4. **CJK viewport precision** — ✅ Completed (commit `1d3cfa5` + Slice-1 docs 收口)
+   - `visibleWidth`-aware viewport vertical navigation in `MultiLineInputState` shipped.
+   - 4 contract tests (`testViewport*MixedWidth*` / `testViewportResizeThenMoveUsesNewVisibleGeometry*`) all green.
+   - Plan: `plans/TASK-cjk-visiblewidth-viewport.md`（status updated to Completed）.
+
+5. **Mixed-width performance baseline** *(Slice-2 — queued)*
+   - Add `testMultiLineInputMixedWidthViewportUnderBudget` gate in `PerformanceBaselineTests`.
+   - Sync `docs/performance-baseline.md` with new workload + gate.
+   - DoD: stable under 5× re-run; full `swift test` green; no threshold relaxation to hide regressions.
+
+6. **TUI hotspot pre-research** *(Slice-3 — queued)*
+   - Profile `TUIRuntime.marker` `visibleWidth` re-computation, `LiveBudgetPlanner.physicalRows` long-live scans, and `MultiLineInputState` visible-col ↔ char-index mapping.
+   - Output: `notes/local/REPORT-2026-05-13-tui-hotspots.md`（measurements + priorities + risks）.
 
 ## Explicitly Stay In ForgeLoopCli
 
