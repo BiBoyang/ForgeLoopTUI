@@ -19,6 +19,11 @@ Ongoing maintenance and stabilization of `ForgeLoopTUI` as a reusable TUI framew
    - Swift Package Index integration
    - Additional example packages
 
+4. **Next iteration: CJK viewport precision**
+   - Implement `visibleWidth`-aware viewport vertical navigation in `MultiLineInputState`.
+   - Add mixed-width contract tests before algorithm changes.
+   - Plan: `plans/TASK-cjk-visiblewidth-viewport.md`.
+
 ## Explicitly Stay In ForgeLoopCli
 
 - `Sources/ForgeLoopCli/AgentEventRenderAdapter.swift`

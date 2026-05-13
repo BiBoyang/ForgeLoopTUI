@@ -1,7 +1,7 @@
 # SemVer and API Stability Policy
 
 Date: 2026-05-11  
-Applies to: `ForgeLoopTUI` Swift Package, version `0.1.2` and onward  
+Applies to: `ForgeLoopTUI` Swift Package, version `0.2.0` and onward  
 Policy version: 1.0
 
 ---
