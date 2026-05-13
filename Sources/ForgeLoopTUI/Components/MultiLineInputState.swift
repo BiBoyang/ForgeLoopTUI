@@ -68,6 +68,8 @@ public struct MultiLineInputState: Sendable, Equatable {
     public private(set) var cursorColumn: Int
     public private(set) var viewport: Viewport?
     private var preferredColumn: Int
+    private var preferredVisualColumn: Int
+    private var preferredVisualColumnNeedsRefresh: Bool
 
     public init(text: String = "", cursorAtEnd: Bool = true, viewport: Viewport? = nil) {
         let split = Self.splitLines(text)
@@ -80,6 +82,8 @@ public struct MultiLineInputState: Sendable, Equatable {
             self.cursorColumn = 0
         }
         self.preferredColumn = self.cursorColumn
+        self.preferredVisualColumn = Self.visibleColumn(in: split[self.cursorRow], charIndex: self.cursorColumn)
+        self.preferredVisualColumnNeedsRefresh = false
         self.viewport = viewport
     }
 
@@ -120,18 +124,18 @@ public struct MultiLineInputState: Sendable, Equatable {
             moveDown()
         case .moveToLineStart:
             cursorColumn = 0
-            preferredColumn = 0
+            syncPreferredColumnsToCursor()
         case .moveToLineEnd:
             cursorColumn = lines[cursorRow].count
-            preferredColumn = cursorColumn
+            syncPreferredColumnsToCursor()
         case .moveToBufferStart:
             cursorRow = 0
             cursorColumn = 0
-            preferredColumn = 0
+            syncPreferredColumnsToCursor()
         case .moveToBufferEnd:
             cursorRow = lines.count - 1
             cursorColumn = lines[cursorRow].count
-            preferredColumn = cursorColumn
+            syncPreferredColumnsToCursor()
         case .killToLineStart:
             killToLineStart()
         case .killToLineEnd:
@@ -141,12 +145,12 @@ public struct MultiLineInputState: Sendable, Equatable {
             lines = split
             cursorRow = split.count - 1
             cursorColumn = split[split.count - 1].count
-            preferredColumn = cursorColumn
+            syncPreferredColumnsToCursor()
         case .clear:
             lines = [""]
             cursorRow = 0
             cursorColumn = 0
-            preferredColumn = 0
+            syncPreferredColumnsToCursor()
         }
     }
 
@@ -171,7 +175,7 @@ public struct MultiLineInputState: Sendable, Equatable {
         line.insert(contentsOf: string, at: idx)
         lines[cursorRow] = line
         cursorColumn += string.count
-        preferredColumn = cursorColumn
+        syncPreferredColumnsToCursor()
     }
 
     private mutating func insertText(_ string: String) {
@@ -202,7 +206,7 @@ public struct MultiLineInputState: Sendable, Equatable {
         lines.replaceSubrange(cursorRow...cursorRow, with: newLines)
         cursorRow += parts.count - 1
         cursorColumn = parts[parts.count - 1].count
-        preferredColumn = cursorColumn
+        syncPreferredColumnsToCursor()
     }
 
     private mutating func insertNewline() {
@@ -214,7 +218,7 @@ public struct MultiLineInputState: Sendable, Equatable {
         lines.insert(tail, at: cursorRow + 1)
         cursorRow += 1
         cursorColumn = 0
-        preferredColumn = 0
+        syncPreferredColumnsToCursor()
     }
 
     private mutating func backspace() {
@@ -225,7 +229,7 @@ public struct MultiLineInputState: Sendable, Equatable {
             line.removeSubrange(start..<end)
             lines[cursorRow] = line
             cursorColumn -= 1
-            preferredColumn = cursorColumn
+            syncPreferredColumnsToCursor()
         } else if cursorRow > 0 {
             let prev = lines[cursorRow - 1]
             let current = lines[cursorRow]
@@ -234,7 +238,7 @@ public struct MultiLineInputState: Sendable, Equatable {
             lines.remove(at: cursorRow)
             cursorRow -= 1
             cursorColumn = newColumn
-            preferredColumn = cursorColumn
+            syncPreferredColumnsToCursor()
         }
     }
 
@@ -260,7 +264,7 @@ public struct MultiLineInputState: Sendable, Equatable {
             cursorRow -= 1
             cursorColumn = lines[cursorRow].count
         }
-        preferredColumn = cursorColumn
+        syncPreferredColumnsToCursor()
     }
 
     private mutating func moveRight() {
@@ -271,7 +275,7 @@ public struct MultiLineInputState: Sendable, Equatable {
             cursorRow += 1
             cursorColumn = 0
         }
-        preferredColumn = cursorColumn
+        syncPreferredColumnsToCursor()
     }
 
     private mutating func moveUp() {
@@ -303,53 +307,53 @@ public struct MultiLineInputState: Sendable, Equatable {
     }
 
     private mutating func moveUpVisual(width: Int) {
-        // Visual row counts: each logical line takes
-        // max(1, ceil(charCount / width)) visual rows.
-        let visualRowInRow = cursorColumn / width
-        let preferredVisualCol = preferredColumn % width
+        let currentLine = lines[cursorRow]
+        let currentVisualColumn = Self.visibleColumn(in: currentLine, charIndex: cursorColumn)
+        let visualRowInRow = currentVisualColumn / width
+        let preferredVisualCol = currentPreferredVisualColumn() % width
 
         if visualRowInRow > 0 {
             // Stay on the same logical line, jump up one visual row.
             let targetVisualRowInRow = visualRowInRow - 1
-            let lineLen = lines[cursorRow].count
-            let candidate = targetVisualRowInRow * width + preferredVisualCol
-            cursorColumn = min(candidate, lineLen)
+            let targetVisibleColumn = targetVisualRowInRow * width + preferredVisualCol
+            cursorColumn = Self.charIndex(in: currentLine, atVisibleColumn: targetVisibleColumn)
             return
         }
         // We're on the top visual row of this logical line; cross to previous line.
         guard cursorRow > 0 else { return }
         cursorRow -= 1
-        let prevLen = lines[cursorRow].count
-        let prevVisualRows = visualRowCount(forLineOfLength: prevLen, width: width)
+        let previousLine = lines[cursorRow]
+        let prevVisualRows = visualRowCount(forLine: previousLine, width: width)
         let targetVisualRowInRow = prevVisualRows - 1
-        let candidate = targetVisualRowInRow * width + preferredVisualCol
-        cursorColumn = min(candidate, prevLen)
+        let targetVisibleColumn = targetVisualRowInRow * width + preferredVisualCol
+        cursorColumn = Self.charIndex(in: previousLine, atVisibleColumn: targetVisibleColumn)
     }
 
     private mutating func moveDownVisual(width: Int) {
-        let visualRowInRow = cursorColumn / width
-        let preferredVisualCol = preferredColumn % width
-        let lineLen = lines[cursorRow].count
-        let totalVisualRows = visualRowCount(forLineOfLength: lineLen, width: width)
+        let currentLine = lines[cursorRow]
+        let currentVisualColumn = Self.visibleColumn(in: currentLine, charIndex: cursorColumn)
+        let visualRowInRow = currentVisualColumn / width
+        let preferredVisualCol = currentPreferredVisualColumn() % width
+        let totalVisualRows = visualRowCount(forLine: currentLine, width: width)
 
         if visualRowInRow + 1 < totalVisualRows {
             // Stay on the same logical line, drop down one visual row.
             let targetVisualRowInRow = visualRowInRow + 1
-            let candidate = targetVisualRowInRow * width + preferredVisualCol
-            cursorColumn = min(candidate, lineLen)
+            let targetVisibleColumn = targetVisualRowInRow * width + preferredVisualCol
+            cursorColumn = Self.charIndex(in: currentLine, atVisibleColumn: targetVisibleColumn)
             return
         }
         // We're on the bottom visual row of this logical line; cross to next line.
         guard cursorRow < lines.count - 1 else { return }
         cursorRow += 1
-        let nextLen = lines[cursorRow].count
-        let candidate = preferredVisualCol
-        cursorColumn = min(candidate, nextLen)
+        let nextLine = lines[cursorRow]
+        cursorColumn = Self.charIndex(in: nextLine, atVisibleColumn: preferredVisualCol)
     }
 
-    private func visualRowCount(forLineOfLength len: Int, width: Int) -> Int {
-        if len == 0 { return 1 }
-        return (len + width - 1) / width
+    private func visualRowCount(forLine line: String, width: Int) -> Int {
+        let totalWidth = visibleWidth(line)
+        if totalWidth == 0 { return 1 }
+        return (totalWidth + width - 1) / width
     }
 
     /// Update the viewport hint. Pass `nil` to disable visual-row navigation
@@ -364,7 +368,7 @@ public struct MultiLineInputState: Sendable, Equatable {
         line.removeSubrange(line.startIndex..<end)
         lines[cursorRow] = line
         cursorColumn = 0
-        preferredColumn = 0
+        syncPreferredColumnsToCursor()
     }
 
     private mutating func killToLineEnd() {
@@ -396,5 +400,46 @@ public struct MultiLineInputState: Sendable, Equatable {
         if value < 0x20 { return true }
         if value == 0x7F { return true }
         return false
+    }
+
+    private mutating func syncPreferredColumnsToCursor() {
+        preferredColumn = cursorColumn
+        preferredVisualColumnNeedsRefresh = true
+    }
+
+    private mutating func currentPreferredVisualColumn() -> Int {
+        if preferredVisualColumnNeedsRefresh {
+            preferredVisualColumn = Self.visibleColumn(in: lines[cursorRow], charIndex: preferredColumn)
+            preferredVisualColumnNeedsRefresh = false
+        }
+        return preferredVisualColumn
+    }
+
+    private static func visibleColumn(in line: String, charIndex: Int) -> Int {
+        let clamped = min(max(0, charIndex), line.count)
+        guard clamped > 0 else { return 0 }
+        let split = line.index(line.startIndex, offsetBy: clamped)
+        return visibleWidth(String(line[line.startIndex..<split]))
+    }
+
+    private static func charIndex(in line: String, atVisibleColumn col: Int) -> Int {
+        let target = max(0, col)
+        guard target > 0 else { return 0 }
+
+        var consumedVisibleColumns = 0
+        var index = 0
+        for character in line {
+            let width = max(0, visibleWidth(String(character)))
+            if width == 0 {
+                index += 1
+                continue
+            }
+            if target < consumedVisibleColumns + width {
+                return index
+            }
+            consumedVisibleColumns += width
+            index += 1
+        }
+        return line.count
     }
 }

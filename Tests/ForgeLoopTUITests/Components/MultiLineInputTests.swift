@@ -440,4 +440,85 @@ final class MultiLineInputTests: XCTestCase {
         // visualRow 6 col 5 = 6*8+5 = 53.
         XCTAssertEqual(state.cursorColumn, 53)
     }
+
+    // MARK: - Step A (failing-first): mixed-width viewport visual moves
+    //
+    // These cases assume the eventual visibleWidth-aware implementation.
+    // Until that lands, the character-index implementation gives the wrong
+    // column on lines that mix narrow ASCII with wide CJK glyphs, and the
+    // tests below are expected to fail. They define the target semantics
+    // for Step B.
+
+    func testViewportMoveUpWithinMixedWidthLineUsesVisibleColumn() {
+        // Line "ab中文cd": visible widths [1,1,2,2,1,1] → total 8 cells.
+        // Width 4 → 2 visual rows:
+        //   row 0 (visible cols 0..3): "ab中"  → char indices 0..3
+        //   row 1 (visible cols 4..7): "文cd"  → char indices 3..6
+        //
+        // Place cursor right after 文 (char index 4, visible col 6, visual
+        // row 1, visual col 2). moveUp should land on row 0 at visible col 2,
+        // which is char index 2 (between b and 中).
+        var state = MultiLineInputState(text: "ab中文cd", viewport: Viewport(width: 4))
+        state.handle(.moveLeft) // past d
+        state.handle(.moveLeft) // past c → cursor at char index 4 (after 文)
+        XCTAssertEqual(state.cursorColumn, 4)
+
+        state.handle(.moveUp)
+        XCTAssertEqual(state.cursorRow, 0)
+        XCTAssertEqual(state.cursorColumn, 2)
+    }
+
+    func testViewportMoveUpAcrossBoundaryPreservesVisibleColumnForMixedWidth() {
+        // line 0 "ab中文cd" (8 visible cells, 2 visual rows at width 4)
+        // line 1 "xy" (2 visible cells, 1 visual row)
+        //
+        // Initial cursor at end of line 1 (char index 2, visible col 2).
+        // moveUp crosses into line 0's last visual row (visible cols 4..7).
+        // Preserving visible col 2 inside that row gives visible col 6, which
+        // is char index 4 (right after 文).
+        var state = MultiLineInputState(text: "ab中文cd\nxy", viewport: Viewport(width: 4))
+        XCTAssertEqual(state.cursorRow, 1)
+        XCTAssertEqual(state.cursorColumn, 2)
+
+        state.handle(.moveUp)
+        XCTAssertEqual(state.cursorRow, 0)
+        XCTAssertEqual(state.cursorColumn, 4)
+    }
+
+    func testViewportMoveDownAcrossBoundaryUsesVisibleColumnForMixedWidth() {
+        // line 0 "ab中文cd" (2 visual rows at width 4)
+        // line 1 "ab" (1 visual row)
+        //
+        // Cursor positioned right after 文 on line 0 (char index 4, visible
+        // col 6, visual row 1, visual col 2). moveDown crosses into line 1
+        // and should preserve visible col 2 → char index 2 (after b).
+        var state = MultiLineInputState(text: "ab中文cd\nab", viewport: Viewport(width: 4))
+        state.handle(.moveUp) // cross into line 0 — also uses visible-col semantics
+        // For the purpose of this test we re-anchor the cursor explicitly:
+        state.handle(.moveToBufferStart)
+        for _ in 0..<4 { state.handle(.moveRight) }
+        XCTAssertEqual(state.cursorRow, 0)
+        XCTAssertEqual(state.cursorColumn, 4)
+
+        state.handle(.moveDown)
+        XCTAssertEqual(state.cursorRow, 1)
+        XCTAssertEqual(state.cursorColumn, 2)
+    }
+
+    func testViewportResizeThenMoveUsesNewVisibleGeometryForMixedWidth() {
+        // Width 8: "ab中文cd" fits in a single visual row → moveUp is a no-op
+        // on a single-line buffer. Resizing to width 4 must re-evaluate the
+        // visual geometry: the same char index 4 now sits at visible col 6
+        // on visual row 1, so moveUp should land at visible col 2 on visual
+        // row 0 → char index 2.
+        var state = MultiLineInputState(text: "ab中文cd", viewport: Viewport(width: 8))
+        state.handle(.moveLeft) // past d
+        state.handle(.moveLeft) // past c → char index 4
+        XCTAssertEqual(state.cursorColumn, 4)
+
+        state.setViewport(Viewport(width: 4))
+        state.handle(.moveUp)
+        XCTAssertEqual(state.cursorRow, 0)
+        XCTAssertEqual(state.cursorColumn, 2)
+    }
 }
