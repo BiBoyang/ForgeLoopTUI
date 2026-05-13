@@ -69,6 +69,27 @@ private func splitPromptLines(_ text: String) -> [String] {
     return normalized.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
 }
 
+// MARK: - Commands & Keybindings
+
+enum AppCommand: Sendable {
+    case submit
+    case insertNewline
+    case backspace
+    case deleteForward
+    case moveLeft
+    case moveRight
+    case moveUpInBuffer
+    case moveDownInBuffer
+    case moveLineStart
+    case moveLineEnd
+    case killToLineStart
+    case killToLineEnd
+    case historyPrev
+    case historyNext
+    case clearOrCancel
+    case interrupt
+}
+
 // MARK: - App State
 
 @MainActor
@@ -76,7 +97,7 @@ final class MinimalAIApp: @unchecked Sendable {
     private let tui: TUI
     private let transcript: TranscriptRenderer
     private let layoutRenderer = ScreenLayoutRenderer()
-    private var input = TextInputState()
+    private var input = MultiLineInputState()
     private var history = PromptHistory()
     private var streamingTask: Task<Void, Never>?
     private var currentAssistantBlockID: String?
@@ -84,12 +105,67 @@ final class MinimalAIApp: @unchecked Sendable {
     private let provider: MinimalAIProvider
     private var lastTerminalSize: TerminalSize?
     private let exitFlag = ExitFlag()
+    private let resolver: KeyResolver<AppCommand>
 
     init(provider: MinimalAIProvider = FauxAIProvider()) {
         let isInteractive = isatty(STDIN_FILENO) == 1 && isatty(STDOUT_FILENO) == 1
-        self.tui = TUI(isTTY: isInteractive)
+        // Use the new physical-rows live budget so that long / wrapped streaming
+        // input is settled into committed instead of being silently clipped.
+        // Budget 4 means the live region (input area) can grow up to 4 physical
+        // rows before head settlement kicks in.
+        //
+        // Use .marker positioning so multi-line wrapped input keeps the
+        // hardware cursor exactly under the logical caret — important for IME
+        // candidate windows when typing Chinese.
+        self.tui = TUI(
+            isTTY: isInteractive,
+            liveBudget: 4,
+            liveBudgetMode: .physicalRows,
+            cursorPositioningMode: .marker
+        )
         self.provider = provider
         self.transcript = TranscriptRenderer()
+        self.resolver = KeyResolver(registry: MinimalAIApp.defaultKeybindings())
+    }
+
+    static func defaultKeybindings() -> KeybindingRegistry<AppCommand> {
+        var registry = KeybindingRegistry<AppCommand>()
+        func bind(_ sequence: KeySequence, _ command: AppCommand) {
+            do {
+                try registry.register(sequence, action: command)
+            } catch {
+                assertionFailure("keybinding registration failed: \(error)")
+            }
+        }
+        bind(KeySequence(KeyStroke(key: .enter)), .submit)
+        bind(KeySequence(KeyStroke(key: .backspace)), .backspace)
+        bind(KeySequence(KeyStroke(key: .delete)), .deleteForward)
+        bind(KeySequence(KeyStroke(key: .left)), .moveLeft)
+        bind(KeySequence(KeyStroke(key: .right)), .moveRight)
+        bind(KeySequence(KeyStroke(key: .up)), .moveUpInBuffer)
+        bind(KeySequence(KeyStroke(key: .down)), .moveDownInBuffer)
+        bind(KeySequence(KeyStroke(key: .home)), .moveLineStart)
+        bind(KeySequence(KeyStroke(key: .end)), .moveLineEnd)
+        bind(KeySequence(KeyStroke(key: .escape)), .clearOrCancel)
+
+        // readline-style control-letter bindings (KeyParser emits uppercase letters
+        // for Ctrl- combos, so register the uppercase form).
+        bind(KeySequence(KeyStroke(key: .character("O"), modifiers: .ctrl)), .insertNewline)
+        bind(KeySequence(KeyStroke(key: .character("A"), modifiers: .ctrl)), .moveLineStart)
+        bind(KeySequence(KeyStroke(key: .character("E"), modifiers: .ctrl)), .moveLineEnd)
+        bind(KeySequence(KeyStroke(key: .character("U"), modifiers: .ctrl)), .killToLineStart)
+        bind(KeySequence(KeyStroke(key: .character("K"), modifiers: .ctrl)), .killToLineEnd)
+        bind(KeySequence(KeyStroke(key: .character("P"), modifiers: .ctrl)), .historyPrev)
+        bind(KeySequence(KeyStroke(key: .character("N"), modifiers: .ctrl)), .historyNext)
+        bind(KeySequence(KeyStroke(key: .character("C"), modifiers: .ctrl)), .interrupt)
+
+        // Chord example: Ctrl-X Ctrl-S commits the current input (Emacs-style).
+        bind(KeySequence([
+            KeyStroke(key: .character("X"), modifiers: .ctrl),
+            KeyStroke(key: .character("S"), modifiers: .ctrl),
+        ]), .submit)
+
+        return registry
     }
 
     // MARK: - Rendering
@@ -104,16 +180,25 @@ final class MinimalAIApp: @unchecked Sendable {
             tui.updateTerminalSize(width: newSize.columns, height: newSize.rows)
         }
 
+        // Soft-wrap aware viewport for moveUp/Down. The input area visually
+        // reserves a 2-cell prompt ("❯ ") on the first row, so the usable
+        // wrap width is `width - 2` (clamped to at least 1).
+        let viewportWidth = max(1, width - 2)
+        if input.viewport?.width != viewportWidth {
+            input.setViewport(Viewport(width: viewportWidth))
+        }
+
         let statusLines = [
             isStreaming ? "● streaming" : "● idle",
             "pending tools: \(transcript.pendingToolCount)",
         ]
 
-        let inputRendered = input.render(
-            prefix: Style.prompt("❯ ", mode: .automatic),
-            totalWidth: width
-        )
-        let inputLines = [inputRendered.line]
+        let inputRendered = input.render()
+        let prompt = Style.prompt("❯ ", mode: .automatic)
+        let continuation = "  " // two ASCII spaces to mirror the visible width of "❯ "
+        let inputLines: [String] = inputRendered.lines.enumerated().map { idx, line in
+            idx == 0 ? prompt + line : continuation + line
+        }
 
         let layout = ScreenLayout(
             header: [],
@@ -133,7 +218,7 @@ final class MinimalAIApp: @unchecked Sendable {
         let frame = layoutRenderer.render(
             layout: layout,
             config: config,
-            cursorOffset: inputRendered.cursorOffset
+            cursorPlacement: inputRendered.cursor
         )
         tui.render(frame: frame)
     }
@@ -200,75 +285,96 @@ final class MinimalAIApp: @unchecked Sendable {
 
     // MARK: - Input Handling
 
-    private func handleKeyEvent(_ event: KeyEvent) -> Bool {
-        if case .character(let c) = event.key,
-           event.modifiers.contains(.ctrl),
-           (c == "c" || c == "C")
-        {
+    @discardableResult
+    private func handleResolved(_ resolved: ResolvedKey<AppCommand>) -> Bool {
+        switch resolved {
+        case .action(let command):
+            return apply(command: command)
+        case .passthrough(let event):
+            switch event.key {
+            case .character(let c) where event.modifiers.isEmpty:
+                input.handle(.insert(c))
+            case .paste(let text):
+                input.handle(.insertText(text))
+            default:
+                break
+            }
+            return true
+        }
+    }
+
+    @discardableResult
+    private func apply(command: AppCommand) -> Bool {
+        switch command {
+        case .submit:
+            submit()
+        case .insertNewline:
+            input.handle(.insertNewline)
+        case .backspace:
+            input.handle(.backspace)
+        case .deleteForward:
+            input.handle(.deleteForward)
+        case .moveLeft:
+            input.handle(.moveLeft)
+        case .moveRight:
+            input.handle(.moveRight)
+        case .moveUpInBuffer:
+            input.handle(.moveUp)
+        case .moveDownInBuffer:
+            input.handle(.moveDown)
+        case .moveLineStart:
+            input.handle(.moveToLineStart)
+        case .moveLineEnd:
+            input.handle(.moveToLineEnd)
+        case .killToLineStart:
+            input.handle(.killToLineStart)
+        case .killToLineEnd:
+            input.handle(.killToLineEnd)
+        case .historyPrev:
+            if let text = history.prev() {
+                input.handle(.replace(text))
+            }
+        case .historyNext:
+            if let text = history.next() {
+                input.handle(.replace(text))
+            }
+        case .clearOrCancel:
+            if isStreaming {
+                cancelStreaming()
+            } else {
+                input.handle(.clear)
+            }
+        case .interrupt:
             cancelStreaming()
             return false
         }
+        return true
+    }
 
-        switch (event.key, event.modifiers) {
-        case (.character(let c), []):
-            input.handle(.insert(c))
-            render()
-
-        case (.backspace, []):
-            input.handle(.backspace)
-            render()
-
-        case (.delete, []):
-            input.handle(.deleteForward)
-            render()
-
-        case (.left, []):
-            input.handle(.moveLeft)
-            render()
-
-        case (.right, []):
-            input.handle(.moveRight)
-            render()
-
-        case (.home, []):
-            input.handle(.moveToStart)
-            render()
-
-        case (.end, []):
-            input.handle(.moveToEnd)
-            render()
-
-        case (.enter, []):
-            submit()
-
-        case (.up, []):
-            if let text = history.prev() {
-                input.handle(.replace(text))
-                render()
+    private func processEvents(_ events: [KeyEvent]) -> Bool {
+        for event in events {
+            for resolved in resolver.feed(event) {
+                if !handleResolved(resolved) {
+                    // Stop draining the rest of this batch as soon as a command
+                    // requests shutdown — otherwise queued events would still be
+                    // applied after we've already decided to exit.
+                    return false
+                }
             }
-
-        case (.down, []):
-            if let text = history.next() {
-                input.handle(.replace(text))
-                render()
-            } else if history.isAtCurrent {
-                input.handle(.clear)
-                render()
-            }
-
-        case (.escape, []):
-            if isStreaming {
-                cancelStreaming()
-                render()
-            } else {
-                input.handle(.clear)
-                render()
-            }
-
-        default:
-            break
         }
         return true
+    }
+
+    private func tickResolver() {
+        let resolveds = resolver.tick()
+        guard !resolveds.isEmpty else { return }
+        for r in resolveds {
+            if !handleResolved(r) {
+                exitFlag.value = true
+                return
+            }
+        }
+        render()
     }
 
     // MARK: - Run
@@ -277,12 +383,10 @@ final class MinimalAIApp: @unchecked Sendable {
         let reader = InputReader { [weak self] events in
             guard let self else { return }
             Task { @MainActor in
-                for event in events {
-                    let keepRunning = self.handleKeyEvent(event)
-                    if !keepRunning {
-                        self.exitFlag.value = true
-                        return
-                    }
+                let keepRunning = self.processEvents(events)
+                self.render()
+                if !keepRunning {
+                    self.exitFlag.value = true
                 }
             }
         }
@@ -292,9 +396,16 @@ final class MinimalAIApp: @unchecked Sendable {
         // Initial render
         render()
 
-        // Keep the main thread alive while reader runs
+        // Keep the main thread alive while reader runs.
+        // Periodically tick the key resolver so that chord prefix timeouts can
+        // flush even when no further input arrives. The whole loop runs on the
+        // MainActor (this method is @MainActor-isolated via the enclosing class),
+        // so tickResolver() is invoked synchronously rather than spawning a Task
+        // each tick.
         while reader.running && !exitFlag.value {
             RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.1))
+            if exitFlag.value { break }
+            tickResolver()
         }
     }
 

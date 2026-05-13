@@ -12,7 +12,8 @@ It provides:
 - terminal-friendly Markdown presentation for headings, lists, blockquotes, fenced code blocks, and tables
 - in-place streaming replacement with `inlineAnchor` / `legacyAbsolute` strategies
 - **commit / live partition rendering**: committed lines are append-only, live lines are efficiently diffed; committed append uses `ESC[nL` fast path to avoid redrawing unchanged live content
-- **live budget with overflow settlement**: when live lines exceed a configured budget, oldest lines are automatically settled into committed to avoid unbounded growth
+- **live budget with overflow settlement**: when live lines exceed a configured budget, oldest lines are automatically settled into committed to avoid unbounded growth. Budget can be counted by logical line count (`.logicalLines`, default for back-compat) or by wrap-aware physical rows (`.physicalRows`, recommended for streaming Markdown / narrow terminals). The same algorithm is shared by `TUI.liveBudget` and `FrameComposer`'s optional `liveOverflow: .settleThenClip` policy
+- **selectable cursor positioning**: `TUI.cursorPositioningMode` defaults to `.relative` (existing relative-move sequences for back-compat) and offers `.marker` for physical-row + CHA absolute-column positioning, recommended when accurate hardware cursor position matters (e.g. Chinese IME candidate windows on multi-line wrapped input)
 - **tool execution placeholders** (`running...` -> `done/failed`) with stable slot ordering for out-of-order completions
 - **resize-safe anchoring**: physical row caches are recomputed on terminal resize so diff cursor math stays correct
 - single-line text input primitives with CJK-safe cursor accounting and horizontal scrolling
@@ -81,6 +82,7 @@ func demo() {
 You can also use:
 
 - `render(committed:live:cursorOffset:)` for two-region rendering where committed is append-only and live is diff-friendly
+- `render(committed:live:cursorPlacement:)` for two-region rendering with 2D cursor positioning (used by multi-line input)
 - `liveBudget` on `TUI` to cap live region size with automatic overflow settlement
 - `appendFrame(lines:)` to write plain terminal output without retained-mode redraw
 - `resetRetainedFrame()` to drop inline redraw state before switching modes
@@ -101,6 +103,11 @@ Low-level logical-line and terminal-metric helpers are kept as implementation de
 - `TextInputState`
   - single-line editor state with cursor movement, backspace/delete, `Home` / `End`, and horizontal scrolling
   - `render(prefix:totalWidth:)` returns a line plus `cursorOffset` ready for `TUI.requestRender`
+- `MultiLineInputState`
+  - multi-line editor state with cursor movement across lines, backspace/delete (including line-join), newline insertion, `Home` / `End`, kill-to-line-start/end
+  - `render()` returns lines plus a `CursorPlacement` (2D cursor anchor) ready for `TUI.render(committed:live:cursorPlacement:)`
+  - `handle(_:)` accepts `MultiLineInputAction` (insert, insertText, insertNewline, backspace, deleteForward, move, kill, replace, clear)
+  - optional `viewport: Viewport?` enables soft-wrap aware `.moveUp` / `.moveDown` — vertical moves walk by visual rows so a single long line wrapping across multiple physical rows is navigated as the user sees it
 - `ModalRenderer`
   - lightweight title/body/footer modal framing
 - `ListPickerState` + `ListPickerRenderer`
@@ -109,6 +116,11 @@ Low-level logical-line and terminal-metric helpers are kept as implementation de
   - minimal input history for up/down key navigation (`commit` / `prev` / `next` / `reset` / `isAtCurrent`)
   - purely a navigation primitive — carries no business semantics (no conversation-id, no session-key, no persistence)
   - lives in `ForgeLoopTUI`; CLI consumers compose it, never re-implement it
+- `KeyStroke` / `KeySequence` / `KeyBinding` / `KeybindingRegistry` / `KeyResolver` / `ResolvedKey`
+  - declarative key bindings with single-key and multi-key chord support
+  - `KeybindingRegistry<Action>` enforces a strict three-state match (`miss` / `prefix` / `exact`) and rejects prefix conflicts at registration time
+  - `KeyResolver<Action>` buffers chord prefixes, releases them as passthrough on timeout (driven by an injectable `InputClock`) or mismatch, and always passes paste events straight through
+  - see `docs/integration-guide.md` §7 for a worked example
 
 Example:
 
@@ -191,9 +203,10 @@ For design rationale and change notes, see `docs/markdown-table-rendering.md`.
 
 ## Stability & SemVer
 
-- `docs/public-api-surface.md` — complete catalog of public APIs with stability tiers (Stable / Provisional / Internal-detail)
+- `docs/public-api-surface.md` — complete catalog of public APIs with stability tiers (Stable / Provisional / Internal-detail), including API stability commitments around defaults, errors, and concurrency
 - `docs/semver-and-api-stability.md` — SemVer policy, breaking-change definitions, deprecation window, and compatibility test requirements
 - `docs/release-checklist.md` — step-by-step release validation (tests, docs, API audit, performance gate, tag)
+- `docs/performance-baseline.md` — baseline gates for hot paths (settlement planner, multi-line input editing, key resolver passthrough); enforced by `PerformanceBaselineTests`
 
 ## Roadmap and Architecture Docs
 
@@ -227,7 +240,7 @@ There are three runnable local example packages:
 
 - `Examples/MinimalStreamingDemo`: stability / public-API smoke example
 - `Examples/MarkdownShowcase`: Markdown presentation example
-- `Examples/MinimalAIApp`: minimal interactive AI terminal app (prompt, streaming, cancel, history)
+- `Examples/MinimalAIApp`: minimal interactive AI terminal app (prompt, streaming, cancel, declarative keybindings with readline-style chords, history). See `Examples/MinimalAIApp/KEYS.md` for the full keymap and interaction manual.
 
 Run the smoke example with:
 

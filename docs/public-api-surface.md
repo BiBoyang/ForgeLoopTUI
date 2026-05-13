@@ -19,7 +19,11 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 
 | Type | Kind | Stability | Breaking-change risk | Migration advice |
 |------|------|-----------|----------------------|------------------|
-| `TUI` | `class` | **Stable** | Low | Core entry point; unlikely to change signature |
+| `TUI` | `class` | **Stable** | Low | Core entry point; new `liveBudgetMode` and `cursorPositioningMode` parameters have defaults so existing callers compile unchanged |
+| `TUI.liveBudgetMode` | `LiveBudgetMode` | **Stable** | Low | Selects how `liveBudget` counts overflow (`.logicalLines` default; `.physicalRows` recommended for wrap-heavy streaming) |
+| `TUI.cursorPositioningMode` | `CursorPositioningMode` | **Stable** | Low | Selects hardware cursor positioning strategy (`.relative` default; `.marker` recommended when accurate hardware position matters, e.g. IME candidate windows) |
+| `LiveBudgetMode` | `enum` | **Stable** | Low | `.logicalLines` / `.physicalRows`; shared with `FrameComposer` settlement |
+| `CursorPositioningMode` | `enum` | **Stable** | Low | `.relative` (back-compat) / `.marker` (physical-row aware, CHA-based) |
 | `RenderLoop` | `class` | **Stable** | Low | Scheduler internals may evolve; public API (`.submit`) is frozen |
 | `RenderLoop.Priority` | `enum` | **Stable** | Very low | `.normal` / `.immediate` only |
 | `RenderStrategy` | `enum` | **Stable** | Low | `.legacyAbsolute` / `.inlineAnchor` unlikely to change |
@@ -27,6 +31,7 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 **Consumer dependency points:**
 - `TUI.render(frame:)` — the primary output path.
 - `TUI.render(committed:live:cursorOffset:)` — two-region path.
+- `TUI.render(committed:live:cursorPlacement:)` — two-region path with 2D cursor positioning.
 - `RenderLoop.submit(committed:priority:)` — coalescing optimization.
 
 ---
@@ -60,8 +65,9 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 | `VStack` | `struct` | **Stable** | Low | Vertical composition primitive |
 | `ComponentBuilder` | `@resultBuilder enum` | **Stable** | Low | DSL syntax frozen |
 | `EmptyComponent` | `struct` | **Internal-detail** | Medium | Builder fallback; rarely used directly |
-| `ComposedFrame` | `struct` | **Stable** | Low | Core frame model; fields (`committed`, `live`, `cursorOffset`) frozen |
-| `LayoutBudget` | `struct` | **Stable** | Low | Simple value type |
+| `ComposedFrame` | `struct` | **Stable** | Low | Core frame model; fields (`committed`, `live`, `cursorOffset`, `cursorPlacement`) frozen |
+| `LayoutBudget` | `struct` | **Stable** | Low | Simple value type; gained optional `liveOverflow` field with a backward-compatible default |
+| `LayoutBudget.LiveOverflowPolicy` | `enum` | **Stable** | Low | `.clipOnly` (default) / `.settleThenClip` |
 | `FrameComposer` | `struct` | **Stable** | Low | Constructor and `render(width:cursorOffset:)` frozen |
 | `ScreenLayout` | `struct` | **Stable** | Low | Region fields frozen; new optional fields may be added safely |
 | `ScreenLayoutConfig` | `struct` | **Stable** | Low | Geometry + visibility flags |
@@ -83,6 +89,11 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 | `TextInputState` | `struct` | **Stable** | Low | Core single-line editor; action set may expand |
 | `TextInputAction` | `enum` | **Stable** | Low | Actions (insert, backspace, move, etc.) |
 | `TextInputRenderResult` | `struct` | **Stable** | Low | `.line` + `.cursorOffset` |
+| `MultiLineInputState` | `struct` | **Stable** | Low | Multi-line editor; action set may expand; optional `viewport` makes `moveUp`/`moveDown` walk by visual rows |
+| `MultiLineInputAction` | `enum` | **Stable** | Low | Actions (insert, insertText, insertNewline, backspace, delete, move, kill, replace, clear) |
+| `Viewport` | `struct` | **Stable** | Low | Optional soft-wrap viewport hint for `MultiLineInputState` (currently width-only) |
+| `CursorPlacement` | `struct` | **Stable** | Very low | 2D cursor anchor (`up` rows, `offset` columns) |
+| `MultiLineInputRenderResult` | `struct` | **Stable** | Low | `.lines` + `.cursor` (CursorPlacement) |
 | `ListPickerState` | `struct` | **Stable** | Low | Selection state machine |
 | `ListPickerAction` | `enum` | **Stable** | Low | `.moveUp`, `.moveDown`, `.confirm`, `.cancel` |
 | `ListPickerOutcome` | `enum` | **Stable** | Low | `.confirmed`, `.cancelled`, `.none` |
@@ -95,6 +106,8 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 **Consumer dependency points:**
 - `TextInputState.handle(_:)` — process key actions.
 - `TextInputState.render(prefix:totalWidth:)` — produce renderable line.
+- `MultiLineInputState.handle(_:)` — process key actions.
+- `MultiLineInputState.render()` — produce renderable lines + cursor placement.
 - `ListPickerState.handle(_:)` — process picker actions.
 - `ListPickerRenderer.render(state:)` — render picker to lines.
 
@@ -105,8 +118,14 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 | Type | Kind | Stability | Breaking-change risk | Migration advice |
 |------|------|-----------|----------------------|------------------|
 | `KeyEvent` | `struct` | **Stable** | Low | Normalized key event model |
-| `Key` | `enum` | **Stable** | Low | Key types (character, arrows, f-keys, etc.) |
-| `Modifiers` | `struct` | **Stable** | Low | OptionSet for shift/alt/ctrl |
+| `Key` | `enum` | **Stable** | Low | Key types (character, arrows, f-keys, etc.); now conforms to `Hashable` |
+| `Modifiers` | `struct` | **Stable** | Low | OptionSet for shift/alt/ctrl; now conforms to `Hashable` |
+| `KeyStroke` | `struct` | **Stable** | Low | Single-press normalized key for binding lookups; the public initializer traps on `Key.paste` (use `init?(event:)` when converting `KeyEvent`s) |
+| `KeySequence` | `struct` | **Stable** | Low | One or more `KeyStroke`s describing a binding (single key or chord) |
+| `KeyBinding` | `struct` | **Stable** | Low | `KeySequence` → caller-defined action |
+| `KeybindingRegistry` | `struct` | **Stable** | Low | Registry with `register` / `unregister` / `match`; enforces prefix-conflict invariants; throws `duplicate` / `prefixConflict` / `containsPaste` |
+| `KeyResolver` | `class` | **Stable** | Medium | Stateful chord resolver driven by an `InputClock`; emits `ResolvedKey`. **Non-`Sendable`** — all `feed`/`tick`/`flush`/`replaceRegistry` calls must be serialized (e.g. a single actor or thread). |
+| `ResolvedKey` | `enum` | **Stable** | Low | `.action(_)` or `.passthrough(KeyEvent)` |
 | `RawTTY` | `class` | **Stable** | Low | Raw TTY lifecycle |
 | `RawTTYError` | `enum` | **Stable** | Very low | `.notATTY`, `.alreadyEntered`, etc. |
 | `withRawTTY(fd:body:)` | `func` | **Stable** | Very low | RAII helper |
@@ -123,6 +142,8 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 **Consumer dependency points:**
 - `InputReader.start(handler:)` / `InputReader.stop()` — event-loop integration.
 - `KeyEvent.key` + `KeyEvent.modifiers` — key handling.
+- `KeybindingRegistry().register(_:action:)` — declarative app-side commands.
+- `KeyResolver(registry:).feed(_:)` / `.tick()` — chord-aware resolution of input.
 - `RawTTY.enter()` / `RawTTY.restore()` — manual TTY management.
 - `withRawTTY(fd:body:)` — RAII raw mode.
 
@@ -221,10 +242,33 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 
 | Stability level | Count | Recommendation |
 |-----------------|-------|----------------|
-| **Stable** | ~55 | Safe to depend on; breaking changes require MAJOR bump |
-| **Provisional** | ~15 | Safe to adopt; monitor release notes for MINOR evolutions |
-| **Internal-detail** | ~20 | Avoid direct dependency; may change without SemVer protection |
+| **Stable** | ~67 | Safe to depend on; breaking changes require MAJOR bump |
+| **Provisional** | ~12 | Safe to adopt; monitor release notes for MINOR evolutions |
+| **Internal-detail** | ~13 | Avoid direct dependency; may change without SemVer protection |
 | **Deprecated** | 3 | Migrate to `CoreRenderEvent` / `TranscriptRenderer.applyCore(_:)` |
+
+---
+
+## API stability commitments
+
+These commitments apply to every API marked **Stable** in this document.
+
+### Defaults
+- All initializers accept defaults for any parameter introduced after the 0.1.0 line: existing callers compile unchanged.
+- The defaults reflect the **safest backwards-compatible behaviour**, not necessarily the recommended one. The "Migration advice" column highlights when a non-default is recommended (e.g. `liveBudgetMode: .physicalRows`, `cursorPositioningMode: .marker`).
+
+### Errors
+- Library APIs throw typed errors only when an unrecoverable invariant is violated by the *caller* (e.g. `KeybindingRegistry.RegistrationError.duplicate` / `.prefixConflict` / `.containsPaste`).
+- Internal subsystems (renderers, parsers) do not throw across the public surface; failures surface as null returns, no-ops, or graceful degradation (e.g. non-TTY auto-fallback for cursor positioning).
+- `precondition` / `preconditionFailure` is used **only** for misuse that cannot be safely recovered (e.g. `KeyStroke(key: .paste(...))`, `Viewport(width: 0)`). These traps stay in Release builds.
+
+### Concurrency
+- Value types (`KeyStroke`, `KeySequence`, `KeyBinding`, `LayoutBudget`, `Viewport`, `MultiLineInputState`, etc.) are `Sendable` and safe to share/copy across actors.
+- Stateful classes carry an explicit concurrency contract in their migration advice column:
+  - `TUI` is `@unchecked Sendable`. Renders are serialised internally by an `NSLock`; callers can hand the same instance to multiple actors safely.
+  - `KeyResolver` is **non-`Sendable`**. Callers must serialise `feed` / `tick` / `flush` / `replaceRegistry` (e.g. always call from the same actor or thread).
+  - `HybridObservableState` is `@MainActor`-isolated and not safe to share off-main.
+- Enum / struct types added through Step 2–5 (modes, policies, viewport) are `Sendable, Equatable, Hashable` where it makes sense, and intentionally **don't** carry hidden state.
 
 ---
 

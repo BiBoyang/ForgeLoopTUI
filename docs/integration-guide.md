@@ -101,7 +101,18 @@ tui.render(frame: frame)
 ### `live`
 - Mutable region that supports diff-based redraw.  
 - Typical use: the current input line, a spinner, or a streaming block that updates every keystroke.
-- When `live` exceeds `liveBudget` on `TUI`, oldest `live` lines overflow into `committed` automatically.
+- When `live` exceeds `liveBudget` on `TUI`, oldest `live` lines overflow into `committed` automatically. The library calls this **settlement**: the head of `live` is appended to the tail of `committed` in order, line-by-line, until `live` fits the budget again. Settlement does **not** drop content — it only moves the commit/live boundary.
+- `liveBudget` is counted by `TUI.liveBudgetMode`:
+  - `.logicalLines` (default): the count is `live.count`. Backwards-compatible with previous releases.
+  - `.physicalRows`: the count is the sum of `physicalRows(for:width:)` over each live line. Recommended for streaming Markdown / long wrapped output / narrow terminals, since a width change can now trigger fresh settlement on the next frame without losing content.
+- At least one line is always kept in `live`, even if its physical rows already exceed `liveBudget`. This preserves a cursor anchor and a diff target.
+
+```swift
+let tui = TUI(
+    liveBudget: 4,
+    liveBudgetMode: .physicalRows
+)
+```
 
 ### `cursorOffset`
 - Optional horizontal cursor offset **within the live region**.
@@ -163,6 +174,29 @@ let frame = composer.render(width: 80, cursorOffset: inputState.cursorOffset)
 tui.render(frame: frame)
 ```
 
+### Live overflow policy
+
+`LayoutBudget.liveOverflow` decides what happens when the live region itself is taller than the budget:
+
+- `.clipOnly` (default): the existing tail-keep behaviour — older live lines are dropped from the head. Backwards compatible with previous releases.
+- `.settleThenClip` *(recommended for streaming apps)*: the same settlement algorithm used by `TUI.liveBudget` first moves overflowing live lines into the tail of `committed`; the final tail-clip then runs on the consolidated buffer. The settled lines become real committed history before any clipping, so the commit/live boundary stays semantically meaningful.
+
+> **Note:** settlement does **not** bypass the final tail-clip. If `committed + live` is still over `maxRows` after settling, the subsequent clip pass can drop settled content too — the difference between `.clipOnly` and `.settleThenClip` is only in *which* lines are treated as committed history while the clip runs, not in whether anything is ultimately retained.
+
+```swift
+let composer = FrameComposer(
+    committed: [...],
+    live: [...],
+    layoutBudget: LayoutBudget(
+        maxRows: 24,
+        overflowMarker: "…",
+        liveOverflow: .settleThenClip
+    )
+)
+```
+
+Pair `.settleThenClip` with `TUI(liveBudget:liveBudgetMode:.physicalRows)` if your app streams long output: both call sites share the internal `LiveBudgetPlanner`, so they will agree on what "live" means.
+
 ---
 
 ## 6. Testing with `VirtualTerminal`
@@ -178,7 +212,152 @@ tui.render(frame: frame)
 
 ---
 
-## 7. Version Selection and Upgrade Notes
+## 7. Keybindings (Stable)
+
+For apps that need more than ad-hoc `switch` statements over `KeyEvent`, `ForgeLoopTUI` ships a small keybinding system:
+
+- `KeyStroke` — a single normalized key (`Key` + `Modifiers`).
+- `KeySequence` — one or more `KeyStroke`s (single key or multi-key chord).
+- `KeybindingRegistry<Action>` — sequence → caller-defined action, with prefix-conflict detection.
+- `KeyResolver<Action>` — stateful resolver. `feed(_:)` returns `[ResolvedKey<Action>]`; `tick()` flushes chord prefixes that have timed out.
+
+### 7.1 Define your commands and registry
+
+```swift
+enum AppCommand: Sendable {
+    case submit, insertNewline, historyPrev, historyNext, interrupt
+}
+
+func appKeybindings() -> KeybindingRegistry<AppCommand> {
+    var r = KeybindingRegistry<AppCommand>()
+    try? r.register(KeySequence(KeyStroke(key: .enter)), action: .submit)
+    try? r.register(
+        KeySequence(KeyStroke(key: .character("O"), modifiers: .ctrl)),
+        action: .insertNewline
+    )
+    try? r.register(
+        KeySequence(KeyStroke(key: .character("P"), modifiers: .ctrl)),
+        action: .historyPrev
+    )
+    try? r.register(
+        KeySequence(KeyStroke(key: .character("N"), modifiers: .ctrl)),
+        action: .historyNext
+    )
+    try? r.register(
+        KeySequence(KeyStroke(key: .character("C"), modifiers: .ctrl)),
+        action: .interrupt
+    )
+    // Multi-key chord example
+    try? r.register(
+        KeySequence([
+            KeyStroke(key: .character("X"), modifiers: .ctrl),
+            KeyStroke(key: .character("S"), modifiers: .ctrl),
+        ]),
+        action: .submit
+    )
+    return r
+}
+```
+
+`KeyParser` emits Ctrl-letter combos with uppercase characters (e.g. `Ctrl-a` arrives as `.character("A"), modifiers: .ctrl`); register the uppercase form to match.
+
+### 7.2 Feed events through the resolver
+
+```swift
+let resolver = KeyResolver(registry: appKeybindings())
+
+for event in eventsFromReader {
+    for resolved in resolver.feed(event) {
+        switch resolved {
+        case .action(let command):
+            apply(command)
+        case .passthrough(let event):
+            // Plain text input falls through here.
+            if case .character(let c) = event.key, event.modifiers.isEmpty {
+                input.handle(.insert(c))
+            } else if case .paste(let text) = event.key {
+                input.handle(.insertText(text))
+            }
+        }
+    }
+}
+```
+
+### 7.3 Drive chord timeouts
+
+Multi-key chords need a tick when no input arrives, otherwise a buffered prefix would hang forever. Call `resolver.tick()` from your idle loop or a timer and process its output the same way you process `feed(_:)`:
+
+```swift
+while reader.running {
+    RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.1))
+    for resolved in resolver.tick() {
+        // same dispatch as above
+    }
+}
+```
+
+### 7.4 Conflict rules
+
+`KeybindingRegistry` rejects three situations:
+
+- **Duplicate** (`.duplicate`) — registering the same `KeySequence` twice.
+- **Prefix conflict** (`.prefixConflict`) — registering a sequence that is a prefix of (or an extension of) an existing sequence. This keeps `KeyResolver` strictly three-state (`miss` / `prefix` / `exact`) and avoids "wait or fire" ambiguity.
+- **Contains paste** (`.containsPaste`) — defense-in-depth guard. The public `KeyStroke(key:modifiers:)` already traps on `Key.paste`, so this only fires for callers that hand-build paste-bearing strokes through reflection or test-only initializers.
+
+Catch the error from `try registry.register(_:action:)` if you load bindings dynamically.
+
+### 7.5 What `KeyResolver` will *not* match
+
+- `Key.paste(_:)` always passes through; pastes never participate in chord matching.
+- Plain typed characters that you have not bound also pass through, so you can route them straight into your input state.
+
+### 7.6 Concurrency
+
+`KeyResolver` is intentionally **non-`Sendable`**. Its internal pending buffer is mutable and unsynchronized. Use it from a single actor or a single thread; if you need to share resolution across actors, wrap it in your own actor.
+
+---
+
+## 8. Cursor Positioning Mode (Stable)
+
+`cursorPlacement` rendering can use two hardware positioning strategies, selectable per `TUI` instance:
+
+- `.relative` (default) — uses relative cursor movement (`ESC[nA` / `ESC[nD` / `ESC[nC`). Implementation is simple and backwards compatible, but the actual hardware position drifts when the rendered content wraps, which can misplace IME candidate windows on multi-line wrapped lines.
+- `.marker` — uses physical-row math plus the **Cursor Horizontal Absolute** sequence `ESC[<col>G`. This is robust against wrap and ambiguous autowrap behaviour; recommended when accurate hardware cursor position matters, such as Chinese IME candidate windows on multi-line input.
+
+```swift
+let tui = TUI(
+    cursorPositioningMode: .marker
+)
+```
+
+Behaviour notes:
+
+- Non-TTY output never emits any cursor sequence regardless of mode.
+- Both modes produce an undo sequence consumed on the *next* render so the diff/fast-path's invariant "cursor sits at the canonical anchor" is preserved.
+- `.marker` is computed per-frame from `physicalRows(for:width:)` and the current `terminalWidth`, so resizes are handled correctly on the next frame.
+
+## 9. Soft-wrap Viewport for `MultiLineInputState` (Stable)
+
+By default `MultiLineInputState.moveUp` / `moveDown` walk by **logical** rows. For inputs that wrap (a single long line that spans several physical rows, long pasted code blocks, or wide-character heavy CJK content), this means a single `Up` key may not visibly move the caret. Set a `Viewport` to opt into visual-row navigation:
+
+```swift
+var input = MultiLineInputState(text: "")
+input.setViewport(Viewport(width: terminalWidth - promptWidth))
+```
+
+Behaviour notes:
+
+- The viewport hint is consumed only by `.moveUp` and `.moveDown`. Other actions (insert, backspace, kill, move-to-line-start/end) ignore it.
+- Visual moves preserve a *preferred visual column* across rows, mirroring user expectations from desktop editors.
+- Pass `nil` (or call `setViewport(nil)`) to revert to logical-row behaviour.
+- On terminal resize, update the viewport with the new width — the next `.moveUp` / `.moveDown` will use the new wrap geometry without any extra recomputation.
+
+```swift
+// inside your render() / resize handler
+input.setViewport(Viewport(width: max(1, terminalWidth - promptWidth)))
+```
+
+## 10. Version Selection and Upgrade Notes
 
 ### Choosing a version
 
@@ -194,7 +373,7 @@ tui.render(frame: frame)
 
 See `docs/semver-and-api-stability.md` for the full policy and `docs/public-api-surface.md` for the per-type stability assignment.
 
-## 8. Related Documents
+## 11. Related Documents
 
 - `docs/public-api-surface.md` — complete public API catalog with stability tiers
 - `docs/semver-and-api-stability.md` — SemVer policy and breaking-change definitions

@@ -14,7 +14,7 @@ public struct KeyEvent: Sendable, Equatable {
 }
 
 /// 可识别的按键类型。
-public enum Key: Sendable, Equatable {
+public enum Key: Sendable, Hashable {
     case character(Character)
     /// Bracketed paste 聚合内容。
     case paste(String)
@@ -26,7 +26,7 @@ public enum Key: Sendable, Equatable {
 }
 
 /// 修饰符集合。
-public struct Modifiers: OptionSet, Sendable, Equatable {
+public struct Modifiers: OptionSet, Sendable, Hashable {
     public let rawValue: UInt8
     public static let shift = Modifiers(rawValue: 1 << 0)
     public static let alt = Modifiers(rawValue: 1 << 1)

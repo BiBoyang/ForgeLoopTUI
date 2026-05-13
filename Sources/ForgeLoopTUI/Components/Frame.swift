@@ -8,11 +8,18 @@ public struct ComposedFrame: Sendable {
     public let committed: [String]
     public let live: [String]
     public let cursorOffset: Int?
+    public let cursorPlacement: CursorPlacement?
 
-    public init(committed: [String] = [], live: [String] = [], cursorOffset: Int? = nil) {
+    public init(
+        committed: [String] = [],
+        live: [String] = [],
+        cursorOffset: Int? = nil,
+        cursorPlacement: CursorPlacement? = nil
+    ) {
         self.committed = committed
         self.live = live
         self.cursorOffset = cursorOffset
+        self.cursorPlacement = cursorPlacement
     }
 }
 
@@ -22,13 +29,40 @@ public struct ComposedFrame: Sendable {
 /// the newest (tail) content is retained.  The optional
 /// `overflowMarker` is emitted as a single line only when clipping
 /// actually occurs.
+///
+/// `liveOverflow` selects how an over-budget *live* region is handled:
+/// - `.clipOnly` (default, backward-compatible): the existing tail-keep
+///   semantics. Excess live lines are simply dropped from the head.
+/// - `.settleThenClip`: live lines that overflow `maxRows` are first
+///   *settled* (moved from the head of `live` into the tail of `committed`)
+///   via the same algorithm `TUI` uses internally. The settled lines then
+///   participate in the final tail-clip pass, so they become part of the
+///   committed history before any clipping. This produces a more semantically
+///   correct commit/live split when streaming long-running output.
 public struct LayoutBudget: Sendable {
     public let maxRows: Int
     public let overflowMarker: String?
+    public let liveOverflow: LiveOverflowPolicy
 
-    public init(maxRows: Int, overflowMarker: String? = nil) {
+    /// Strategy for handling live regions whose physical rows exceed `maxRows`.
+    public enum LiveOverflowPolicy: Sendable, Equatable {
+        /// Existing behaviour: clip the live head to fit the budget; older
+        /// live lines are dropped entirely.
+        case clipOnly
+        /// Settle excess live lines into the tail of `committed` using the
+        /// shared ``LiveBudgetPlanner`` algorithm, then run the same tail
+        /// clip. Recommended for streaming-style apps.
+        case settleThenClip
+    }
+
+    public init(
+        maxRows: Int,
+        overflowMarker: String? = nil,
+        liveOverflow: LiveOverflowPolicy = .clipOnly
+    ) {
         self.maxRows = maxRows
         self.overflowMarker = overflowMarker
+        self.liveOverflow = liveOverflow
     }
 }
 
@@ -84,14 +118,27 @@ public struct FrameComposer: Sendable {
         budget: LayoutBudget,
         cursorOffset: Int?
     ) -> ComposedFrame {
-        let livePhysical = live.map { physicalRows(for: $0, width: width) }
-        let committedPhysical = committed.map { physicalRows(for: $0, width: width) }
+        // Optional settlement pass: keep live region within `maxRows` by
+        // promoting overflow lines from `live` head to `committed` tail.
+        // This is the same algorithm `TUI.applyLiveBudget` uses internally;
+        // sharing it keeps the commit/live boundary semantically aligned.
+        var workingCommitted = committed
+        var workingLive = live
+        if budget.liveOverflow == .settleThenClip, budget.maxRows > 0 {
+            let planner = LiveBudgetPlanner(mode: .physicalRows, budget: budget.maxRows, width: width)
+            let plan = planner.plan(committed: workingCommitted, live: workingLive)
+            workingCommitted = plan.committed
+            workingLive = plan.live
+        }
+
+        let livePhysical = workingLive.map { physicalRows(for: $0, width: width) }
+        let committedPhysical = workingCommitted.map { physicalRows(for: $0, width: width) }
         let totalLive = livePhysical.reduce(0, +)
         let totalCommitted = committedPhysical.reduce(0, +)
         let total = totalLive + totalCommitted
 
         guard total > budget.maxRows else {
-            return ComposedFrame(committed: committed, live: live, cursorOffset: cursorOffset)
+            return ComposedFrame(committed: workingCommitted, live: workingLive, cursorOffset: cursorOffset)
         }
 
         let marker = budget.overflowMarker
@@ -100,12 +147,12 @@ public struct FrameComposer: Sendable {
 
         // 1. Prioritise live tail
         let (liveClipped, liveUsed) = clipTail(
-            lines: live,
+            lines: workingLive,
             physicalPerLine: livePhysical,
             maxPhysicalRows: available
         )
 
-        if liveClipped.count < live.count {
+        if liveClipped.count < workingLive.count {
             // Live itself exceeds budget; committed is completely dropped.
             let finalLive = marker != nil ? [marker!] + liveClipped : liveClipped
             return ComposedFrame(committed: [], live: finalLive, cursorOffset: cursorOffset)
@@ -114,12 +161,12 @@ public struct FrameComposer: Sendable {
         // 2. Live fits entirely; give remainder to committed tail
         let committedBudget = available - liveUsed
         let (committedClipped, _) = clipTail(
-            lines: committed,
+            lines: workingCommitted,
             physicalPerLine: committedPhysical,
             maxPhysicalRows: committedBudget
         )
 
-        let finalCommitted = (committedClipped.count < committed.count && marker != nil)
+        let finalCommitted = (committedClipped.count < workingCommitted.count && marker != nil)
             ? [marker!] + committedClipped
             : committedClipped
 

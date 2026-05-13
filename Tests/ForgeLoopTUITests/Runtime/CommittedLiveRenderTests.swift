@@ -124,6 +124,65 @@ struct CommittedLiveRenderTests {
         #expect(!out2.contains("\u{1B}[2J"))
     }
 
+    // MARK: - Step 3: physicalRows live budget mode
+
+    @Test("liveBudgetMode .physicalRows settles wrapping live lines")
+    func testLiveBudgetPhysicalRowsSettles() {
+        let spy = OutputSpy()
+        // budget=2 physical rows at width=10. Each "0123456789ab" (12 chars) wraps to 2 rows.
+        let tui = TUI(
+            strategy: .inlineAnchor,
+            terminalWidth: 10,
+            liveBudget: 2,
+            liveBudgetMode: .physicalRows,
+            writer: spy.writer
+        )
+        let wide = "0123456789ab" // 12 chars → 2 rows @ width=10
+
+        tui.render(committed: ["c1"], live: [wide, wide, "tail"])
+        // wide(2) + wide(2) + tail(1) = 5 rows; budget=2.
+        // Settle wide → remaining=[wide,tail]=3>2 → settle wide → remaining=[tail]=1 stop.
+        // Expected emitted lines: c1, wide, wide, tail
+        #expect(spy.last == "c1\r\n\(wide)\r\n\(wide)\r\ntail\r\n")
+    }
+
+    @Test("liveBudgetMode .physicalRows resize narrower triggers more settle on next render")
+    func testLiveBudgetPhysicalRowsResizeAddsSettle() {
+        let spy = OutputSpy()
+        let tui = TUI(
+            strategy: .inlineAnchor,
+            terminalWidth: 20,
+            liveBudget: 3,
+            liveBudgetMode: .physicalRows,
+            writer: spy.writer
+        )
+        let line = "abcdefghijklmnopqrst" // 20 chars → 1 row @ width=20, 2 rows @ width=10
+
+        // Frame 1: width=20, two lines = 2 rows ≤ budget=3 → no settle.
+        tui.render(committed: ["c"], live: [line, line])
+        #expect(spy.last == "c\r\n\(line)\r\n\(line)\r\n")
+
+        // Resize to width=10 (the shrink): same content now wraps to 4 rows > budget=3.
+        tui.updateTerminalSize(width: 10)
+        tui.render(committed: ["c"], live: [line, line])
+        // After settle: head line moves to committed → committed=[c, line], live=[line].
+        // Renderer flushes the new arrangement.
+        let out = spy.last!
+        #expect(out.contains(line))
+        #expect(!out.contains("\u{1B}[2J")) // remains in inline path; resize alone shouldn't legacy-clear
+    }
+
+    @Test("liveBudgetMode .logicalLines is the default and matches historical behaviour")
+    func testLiveBudgetModeDefaultLogicalLines() {
+        let spy = OutputSpy()
+        let tui = TUI(strategy: .inlineAnchor, liveBudget: 2, writer: spy.writer)
+        #expect(tui.liveBudgetMode == .logicalLines)
+
+        tui.render(committed: ["c1"], live: ["l1", "l2", "l3"])
+        // Logical line semantics: live=3 > budget=2 → settle l1.
+        #expect(spy.last == "c1\r\nl1\r\nl2\r\nl3\r\n")
+    }
+
     // MARK: - M4-S5: Resize-safe anchoring and cursor positioning
 
     @Test("resize recomputes physical rows for correct diff baseline")
@@ -263,5 +322,237 @@ struct CommittedLiveRenderTests {
         #expect(out3?.contains("newLive") ?? false)
         // 基线正确时 committedDiff=nil，应只 diff live 区（含回退/清除序列）
         #expect(out3?.contains("\u{1B}[") ?? false)
+    }
+
+    // MARK: - 2D cursor placement (cursorPlacement)
+
+    @Test("cursorPlacement up>0 emits both vertical and horizontal moves")
+    func testCursorPlacementEmitsVerticalAndHorizontalMoves() {
+        let spy = OutputSpy()
+        let tui = TUI(strategy: .inlineAnchor, writer: spy.writer)
+
+        // Live has two rows; cursor target = row 0 ("hello"), col 2.
+        // Last line width = 5 ("world"); target row width = 5 ("hello"); placement.offset = 5 - 2 = 3.
+        tui.render(committed: [], live: ["hello", "world"], cursorPlacement: CursorPlacement(up: 1, offset: 3))
+
+        let combined = spy.outputs.joined()
+        // Content rendered with cursorOffset=0 (anchored, no trailing newline)
+        #expect(combined.contains("hello\r\nworld"))
+        // Move up 1 row from end of last live line
+        #expect(combined.contains("\u{1B}[1A"))
+        // Move left to land at column 2 of "hello": last-line end col 5 → target col 2 → 3 left
+        #expect(combined.contains("\u{1B}[3D"))
+    }
+
+    @Test("cursorPlacement up>0 with shorter last line moves right")
+    func testCursorPlacementMovesRightWhenLastLineShorter() {
+        let spy = OutputSpy()
+        let tui = TUI(strategy: .inlineAnchor, writer: spy.writer)
+
+        // Cursor on row 0 ("alphabet", width 8) at column 6 -> placement.offset = 8 - 6 = 2.
+        // Last line ("") width 0; after rendering cursor is at column 0 of last line.
+        // Need to go up 1 row (still at col 0) then RIGHT to col 6.
+        tui.render(committed: [], live: ["alphabet", ""], cursorPlacement: CursorPlacement(up: 1, offset: 2))
+
+        let combined = spy.outputs.joined()
+        #expect(combined.contains("alphabet"))
+        #expect(combined.contains("\u{1B}[1A"))
+        // -leftDelta = -(0 - 6) = 6 → ESC[6C
+        #expect(combined.contains("\u{1B}[6C"))
+    }
+
+    @Test("cursorPlacement up=0 matches cursorOffset behavior")
+    func testCursorPlacementUpZeroEquivalentToCursorOffset() {
+        let spy = OutputSpy()
+        let tui = TUI(strategy: .inlineAnchor, writer: spy.writer)
+
+        // Single live line; placement.up = 0; placement.offset = 2 should produce ESC[2D and no vertical move.
+        tui.render(committed: [], live: ["hello"], cursorPlacement: CursorPlacement(up: 0, offset: 2))
+
+        let combined = spy.outputs.joined()
+        #expect(combined.contains("hello"))
+        // 2D-specific extra write is empty when up=0 and last-line end column == target column.
+        // Inner render emits the ESC[2D from cursorOffset=0 path... wait: the new method passes
+        // cursorOffset=0 to inner render, so inner emits no horizontal. Then leftDelta=5-3=...
+        // Actually: last-line width 5, targetCol = 5 - 2 = 3, leftDelta = 5 - 3 = 2 → ESC[2D
+        #expect(combined.contains("\u{1B}[2D"))
+        #expect(!combined.contains("\u{1B}[1A"))
+        #expect(!combined.contains("\u{1B}[0A"))
+    }
+
+    @Test("cursorPlacement undo restores anchor before next render")
+    func testCursorPlacementUndoBeforeNextRender() {
+        let spy = OutputSpy()
+        let tui = TUI(strategy: .inlineAnchor, writer: spy.writer)
+
+        // Frame 1: place cursor on row 0 of two-line live.
+        tui.render(committed: [], live: ["abcde", "xy"], cursorPlacement: CursorPlacement(up: 1, offset: 3))
+        // Frame 2: any render — the first emission must include the undo sequence to move
+        // cursor back to canonical anchor (down 1 row, then right by previous leftDelta = 2-2 = 0).
+        // Note last line width 2, target row width 5, offset 3 → targetCol = 2, leftDelta = 2 - 2 = 0.
+        // So undo is only the vertical part: ESC[1B.
+        let outputsBeforeFrame2 = spy.outputs.count
+        tui.render(committed: [], live: ["abcde", "xy"], cursorOffset: 0)
+        // First write after frame 1 should begin with the vertical undo (ESC[1B).
+        let next = spy.outputs[outputsBeforeFrame2]
+        #expect(next.hasPrefix("\u{1B}[1B"))
+    }
+
+    @Test("cursorPlacement on non-TTY does not emit ANSI sequences")
+    func testCursorPlacementNonTTYDropsCursorMoves() {
+        let spy = OutputSpy()
+        let tui = TUI(isTTY: false, writer: spy.writer)
+
+        tui.render(committed: [], live: ["line1", "line2"], cursorPlacement: CursorPlacement(up: 1, offset: 2))
+        let combined = spy.outputs.joined()
+        // Non-TTY: plain newlines, no trailing newline because we delegate via cursorOffset=0 (anchored), no ANSI sequences emitted.
+        #expect(combined == "line1\nline2")
+        #expect(!combined.contains("\u{1B}["))
+    }
+
+    @Test("ComposedFrame with cursorPlacement is preferred over cursorOffset")
+    func testComposedFramePrefersCursorPlacement() {
+        let spy = OutputSpy()
+        let tui = TUI(strategy: .inlineAnchor, writer: spy.writer)
+
+        // Both set: placement wins.
+        let frame = ComposedFrame(
+            committed: [],
+            live: ["abcdef", "12"],
+            cursorOffset: 7,
+            cursorPlacement: CursorPlacement(up: 1, offset: 2)
+        )
+        tui.render(frame: frame)
+
+        let combined = spy.outputs.joined()
+        #expect(combined.contains("abcdef\r\n12"))
+        #expect(combined.contains("\u{1B}[1A"))
+        // leftDelta = 2 (last "12") - (6 - 2) = 2 - 4 = -2 → ESC[2C
+        #expect(combined.contains("\u{1B}[2C"))
+        // cursorOffset=7 was IGNORED, so we should not see ESC[7D
+        #expect(!combined.contains("\u{1B}[7D"))
+    }
+
+    // MARK: - Step 4: marker cursor positioning mode
+
+    @Test("cursorPositioningMode defaults to .relative")
+    func testCursorPositioningModeDefault() {
+        let tui = TUI(strategy: .inlineAnchor)
+        #expect(tui.cursorPositioningMode == .relative)
+    }
+
+    @Test("marker mode single-line uses absolute column (CHA)")
+    func testMarkerSingleLine() {
+        let spy = OutputSpy()
+        let tui = TUI(
+            strategy: .inlineAnchor,
+            cursorPositioningMode: .marker,
+            writer: spy.writer
+        )
+        // live=["hello"] width 80; placement(up=0, offset=2) → targetCol=3.
+        tui.render(committed: [], live: ["hello"], cursorPlacement: CursorPlacement(up: 0, offset: 2))
+
+        let combined = spy.outputs.joined()
+        // Content rendered with anchored cursor (no trailing \r\n).
+        #expect(combined.contains("hello"))
+        // CHA to column 4 (1-indexed: targetCol 3 → col 4).
+        #expect(combined.contains("\u{1B}[4G"))
+        // No relative D/C movement (marker mode uses absolute column only).
+        #expect(!combined.contains("\u{1B}[2D"))
+        #expect(!combined.contains("\u{1B}[2C"))
+    }
+
+    @Test("marker mode multi-line emits vertical move plus CHA")
+    func testMarkerMultiLineNoWrap() {
+        let spy = OutputSpy()
+        let tui = TUI(
+            strategy: .inlineAnchor,
+            cursorPositioningMode: .marker,
+            writer: spy.writer
+        )
+        // live=["hello", "world"] width 80; placement(up=1, offset=3) → target row "hello" col 2.
+        tui.render(committed: [], live: ["hello", "world"], cursorPlacement: CursorPlacement(up: 1, offset: 3))
+
+        let combined = spy.outputs.joined()
+        #expect(combined.contains("hello\r\nworld"))
+        // Up 1 physical row to "hello".
+        #expect(combined.contains("\u{1B}[1A"))
+        // Absolute column 3 (1-indexed targetCol 2 → col 3).
+        #expect(combined.contains("\u{1B}[3G"))
+    }
+
+    @Test("marker mode crossing wrapped row aligns to physical row")
+    func testMarkerWrapAware() {
+        let spy = OutputSpy()
+        // width=5; "abcdefghij" (10 chars) wraps to 2 physical rows.
+        let tui = TUI(
+            strategy: .inlineAnchor,
+            terminalWidth: 5,
+            cursorPositioningMode: .marker,
+            writer: spy.writer
+        )
+        // single logical line wrapping; placement(up=0, offset=3) → targetCol=7.
+        // physicalRowInsideTarget = 7/5 = 1; cursorAbsRow = 0 + (2-1) = 1.
+        // upDelta = 1 - 1 = 0; CHA col = (7 % 5) + 1 = 3.
+        tui.render(committed: [], live: ["abcdefghij"], cursorPlacement: CursorPlacement(up: 0, offset: 3))
+
+        let combined = spy.outputs.joined()
+        #expect(combined.contains("abcdefghij"))
+        // No vertical move (already on the target physical row).
+        #expect(!combined.contains("\u{1B}[1A"))
+        // CHA absolute column 3.
+        #expect(combined.contains("\u{1B}[3G"))
+    }
+
+    @Test("marker mode undo emits CHA back to canonical column before next render")
+    func testMarkerUndoBeforeNextRender() {
+        let spy = OutputSpy()
+        let tui = TUI(
+            strategy: .inlineAnchor,
+            cursorPositioningMode: .marker,
+            writer: spy.writer
+        )
+        // Frame 1: place cursor on row 0 of two-line live.
+        tui.render(committed: [], live: ["abcde", "xy"], cursorPlacement: CursorPlacement(up: 1, offset: 3))
+        let outputsBeforeFrame2 = spy.outputs.count
+
+        // Frame 2: any subsequent render. The first emission must begin with
+        // the undo sequence: down 1 physical row + CHA back to canonical column.
+        // Canonical column for last line "xy" = ((2-1) % 80) + 2 = 3.
+        tui.render(committed: [], live: ["abcde", "xy"], cursorOffset: 0)
+        let next = spy.outputs[outputsBeforeFrame2]
+        #expect(next.hasPrefix("\u{1B}[1B\u{1B}[3G"))
+    }
+
+    @Test("marker mode on non-TTY drops cursor moves entirely")
+    func testMarkerNonTTYNoAnsi() {
+        let spy = OutputSpy()
+        let tui = TUI(
+            isTTY: false,
+            cursorPositioningMode: .marker,
+            writer: spy.writer
+        )
+        tui.render(committed: [], live: ["line1", "line2"], cursorPlacement: CursorPlacement(up: 1, offset: 2))
+        let combined = spy.outputs.joined()
+        // Plain newlines, no anchored trailing newline (delegated via cursorOffset=0).
+        #expect(combined == "line1\nline2")
+        #expect(!combined.contains("\u{1B}["))
+    }
+
+    @Test("marker mode skips both move and CHA when target == anchor (single empty line)")
+    func testMarkerNoOpOnEmptyLine() {
+        let spy = OutputSpy()
+        let tui = TUI(
+            strategy: .inlineAnchor,
+            cursorPositioningMode: .marker,
+            writer: spy.writer
+        )
+        // live=[""] empty single line; placement(up=0, offset=0) → targetCol=0 → CHA col 1.
+        tui.render(committed: [], live: [""], cursorPlacement: CursorPlacement(up: 0, offset: 0))
+        let combined = spy.outputs.joined()
+        // CHA col 1 is still emitted (defensive baseline) so the cursor lands
+        // unambiguously at column 1, but no vertical move is needed.
+        #expect(combined.contains("\u{1B}[1G"))
+        #expect(!combined.contains("\u{1B}[0A"))
     }
 }

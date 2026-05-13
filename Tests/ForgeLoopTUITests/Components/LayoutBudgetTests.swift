@@ -159,3 +159,79 @@ import Testing
     let frame = composer.render(width: 80, cursorOffset: 7)
     #expect(frame.cursorOffset == 7)
 }
+
+// MARK: - liveOverflow .settleThenClip
+
+@Test func testSettleThenClipMovesLiveHeadIntoCommitted() {
+    // Live exceeds maxRows alone; with .settleThenClip the head live lines
+    // become part of committed before tail-clip.
+    let composer = FrameComposer(
+        committed: [],
+        live: [
+            AnyComponent(TextInputComponent(prompt: "L1: ", value: "a")),
+            AnyComponent(TextInputComponent(prompt: "L2: ", value: "b")),
+            AnyComponent(TextInputComponent(prompt: "L3: ", value: "c")),
+            AnyComponent(TextInputComponent(prompt: "L4: ", value: "d"))
+        ],
+        layoutBudget: LayoutBudget(maxRows: 2, liveOverflow: .settleThenClip)
+    )
+    let frame = composer.render(width: 80)
+    // Settle: live=4 rows > 2 → settle L1,L2 → committed=[L1,L2], live=[L3,L4].
+    // Then total=4 > 2; clipTail prioritises live tail → committed dropped, live kept.
+    #expect(frame.committed.isEmpty)
+    #expect(frame.live.count == 2)
+    #expect(frame.live[0] == "L3: c")
+    #expect(frame.live[1] == "L4: d")
+}
+
+@Test func testSettleThenClipStillRespectsFinalTailClip() {
+    // Live exceeds maxRows; .settleThenClip promotes head live lines into
+    // committed, but the subsequent tail-clip still drops them because the
+    // consolidated buffer (committed + live) remains over budget and the
+    // clip pass prioritises the live tail. This documents that settlement
+    // does not bypass the final clip — it only changes which lines are
+    // treated as committed history while the clip runs.
+    let composer = FrameComposer(
+        committed: [],
+        live: [
+            AnyComponent(TextInputComponent(prompt: "L1: ", value: "a")),
+            AnyComponent(TextInputComponent(prompt: "L2: ", value: "b")),
+            AnyComponent(TextInputComponent(prompt: "L3: ", value: "c"))
+        ],
+        layoutBudget: LayoutBudget(maxRows: 2, liveOverflow: .settleThenClip)
+    )
+    let frame = composer.render(width: 80)
+    // Settle: live=3 > 2 → settle L1 → live=[L2,L3] (2 rows).
+    // Total=3 > 2; clipTail keeps live=2 fully and gives committed budget=0,
+    // so the settled L1 is dropped on the way out. Same visible outcome as
+    // .clipOnly, but the intermediate commit/live shape is well-defined.
+    #expect(frame.committed.isEmpty)
+    #expect(frame.live == ["L2: b", "L3: c"])
+}
+
+@Test func testClipOnlyPreservedAsDefault() {
+    let composer = FrameComposer(
+        committed: [],
+        live: [
+            AnyComponent(TextInputComponent(prompt: "L1: ", value: "a")),
+            AnyComponent(TextInputComponent(prompt: "L2: ", value: "b")),
+            AnyComponent(TextInputComponent(prompt: "L3: ", value: "c"))
+        ],
+        layoutBudget: LayoutBudget(maxRows: 2)
+    )
+    let frame = composer.render(width: 80)
+    // Default is clipOnly; same outcome as before this refactor.
+    #expect(frame.committed.isEmpty)
+    #expect(frame.live == ["L2: b", "L3: c"])
+}
+
+@Test func testSettleThenClipUnderBudgetIsNoop() {
+    let composer = FrameComposer(
+        committed: [AnyComponent(TextInputComponent(prompt: "C: ", value: "history"))],
+        live: [AnyComponent(TextInputComponent(prompt: "L: ", value: "now"))],
+        layoutBudget: LayoutBudget(maxRows: 5, liveOverflow: .settleThenClip)
+    )
+    let frame = composer.render(width: 80)
+    #expect(frame.committed == ["C: history"])
+    #expect(frame.live == ["L: now"])
+}

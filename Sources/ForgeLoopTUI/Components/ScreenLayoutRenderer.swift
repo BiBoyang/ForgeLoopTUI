@@ -148,6 +148,23 @@ public struct ScreenLayoutRenderer: Sendable {
         )
     }
 
+    /// Overload that accepts a 2D `CursorPlacement` instead of a single `cursorOffset`.
+    ///
+    /// Convenience wrapper that re-uses the partition / budget logic of the primary
+    /// `render(layout:config:cursorOffset:)` and only swaps in the 2D cursor anchor.
+    public func render(
+        layout: ScreenLayout,
+        config: ScreenLayoutConfig,
+        cursorPlacement: CursorPlacement
+    ) -> ComposedFrame {
+        let frame = render(layout: layout, config: config, cursorOffset: nil)
+        return ComposedFrame(
+            committed: frame.committed,
+            live: frame.live,
+            cursorPlacement: cursorPlacement
+        )
+    }
+
     // MARK: - Pinned-aware transcript clipping (order-preserving)
 
     /// Clips a transcript while respecting a pinned range and preserving original order.
