@@ -76,7 +76,41 @@ against accidentally re-introducing the quadratic loop.
 
 ---
 
-## How to re-measure
+## 4. `MultiLineInputState` mixed-width viewport navigation (Components)
+
+### Why this path matters
+- Protects the CJK / emoji viewport precision regression surface introduced
+  in commit `1d3cfa5` (visibleWidth-aware moveUp/moveDown).
+- Mixed-width input forces every viewport vertical move to walk the line
+  with `visibleWidth(_:)` and then map the preferred *visible column* back
+  to a character index. If either side regresses to O(n²) the impact is
+  felt immediately on long pasted prompts.
+- Slice-2 (2026-05-13) added this gate explicitly so future optimisation
+  passes cannot silently relax the cost.
+
+### Workload
+- Start from empty state with `Viewport(width: 80)`.
+- `insertText` a 3 996-character line made of the pattern `"ab中🚀cd"`
+  repeated 666 times (mixed ASCII + CJK + emoji; ~7 visible cells per
+  6 characters → ≈4 662 visible cells total).
+- Then run 200 alternating `moveLeft` / `moveRight` actions.
+- Then run 50 alternating `moveUp` / `moveDown` actions (viewport-aware,
+  visibleWidth-driven geometry).
+
+### Baseline
+- p50 wall time for the whole sequence (debug build, M-series): **~0.23 s**;
+  variance across 5 consecutive runs <2 %.
+- Test gate: total time **<500 ms**.
+
+The gate is intentionally looser than the ASCII case (`<150 ms`) because
+the mixed-width path performs additional `visibleWidth` scans plus a
+visible-col reverse lookup per move. The bound primarily guards against
+algorithmic regressions in the visible-col mapping path, not against
+absolute throughput.
+
+---
+
+## 5. How to re-measure
 
 ```bash
 swift test -c release --filter PerformanceBaseline
