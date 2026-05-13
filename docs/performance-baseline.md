@@ -87,6 +87,9 @@ against accidentally re-introducing the quadratic loop.
   felt immediately on long pasted prompts.
 - Slice-2 (2026-05-13) added this gate explicitly so future optimisation
   passes cannot silently relax the cost.
+- P0 follow-up commit `0991f20` optimised the `charIndex(in:atVisibleColumn:)`
+  hot path (single-scalar fast path + shared wide-scalar check) to reduce
+  per-move width-lookup overhead.
 
 ### Workload
 - Start from empty state with `Viewport(width: 80)`.
@@ -98,8 +101,10 @@ against accidentally re-introducing the quadratic loop.
   visibleWidth-driven geometry).
 
 ### Baseline
-- p50 wall time for the whole sequence (debug build, M-series): **~0.23 s**;
-  variance across 5 consecutive runs <2 %.
+- pre-optimisation baseline (before `0991f20`): **~0.245 s**.
+- post-optimisation baseline (debug build, M-series): **0.204 s–0.212 s**,
+  average **~0.207 s** across 5 consecutive runs.
+- relative improvement: **~15.5 %** on the mixed-width workload.
 - Test gate: total time **<500 ms**.
 
 The gate is intentionally looser than the ASCII case (`<150 ms`) because
