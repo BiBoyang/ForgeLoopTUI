@@ -57,6 +57,81 @@ final class MarkdownEngineTests: XCTestCase {
         XCTAssertFalse(lines.contains("| alice | 99 |"))
     }
 
+    func testStreamingEngineRendersCompleteRowsAsTableWithoutTrailingNewline() {
+        let engine = StreamingMarkdownEngine()
+        let text = """
+        | name | score |
+        | --- | ---: |
+        | alice | 99 |
+        | bob | 7 |
+        """
+        .trimmingCharacters(in: .newlines)
+
+        let lines = engine.render(text: text, isFinal: false)
+        XCTAssertTrue(lines.first?.hasPrefix("┌") == true)
+        XCTAssertTrue(lines.contains(where: { $0.contains("alice") && $0.contains("99") }))
+        XCTAssertTrue(lines.contains(where: { $0.contains("bob") && $0.contains("7") }))
+        XCTAssertFalse(lines.contains("| bob | 7 |"))
+    }
+
+    func testStreamingEngineKeepsTableRenderingWhileTrailingRowGrows() {
+        let engine = StreamingMarkdownEngine()
+        let initial = """
+        | name | score |
+        | --- | --- |
+        | alice |
+        """
+        .trimmingCharacters(in: .newlines)
+        let afterFirstCell = """
+        | name | score |
+        | --- | --- |
+        | alice | 9
+        """
+        .trimmingCharacters(in: .newlines)
+        let afterSecondCell = """
+        | name | score |
+        | --- | --- |
+        | alice | 99
+        """
+        .trimmingCharacters(in: .newlines)
+
+        let step1 = engine.render(text: initial, isFinal: false)
+        XCTAssertEqual(step1, ["| name | score |", "| --- | --- |", "| alice |"])
+
+        let step2 = engine.render(text: afterFirstCell, isFinal: false)
+        XCTAssertTrue(step2.first?.hasPrefix("┌") == true)
+        XCTAssertFalse(step2.contains("| alice | 9"))
+
+        let step3 = engine.render(text: afterSecondCell, isFinal: false)
+        XCTAssertTrue(step3.first?.hasPrefix("┌") == true)
+        XCTAssertTrue(step3.contains(where: { $0.contains("alice") && $0.contains("99") }))
+        XCTAssertFalse(step3.contains("| alice | 99"))
+    }
+
+    func testStreamingEngineStrictModeKeepsRawTableUntilTerminated() {
+        let engine = StreamingMarkdownEngine(
+            options: .init(
+                tablePolicy: .default,
+                tableStreamingBehavior: .strict
+            )
+        )
+        let text = """
+        | name | score |
+        | --- | --- |
+        | alice | 99 |
+        | bob | 7 |
+        """
+        .trimmingCharacters(in: .newlines)
+
+        let lines = engine.render(text: text, isFinal: false)
+        XCTAssertEqual(lines, [
+            "| name | score |",
+            "| --- | --- |",
+            "| alice | 99 |",
+            "| bob | 7 |",
+        ])
+    }
+
     func testStreamingEngineRendersCodeFenceWithoutParsingNestedTable() {
         let engine = StreamingMarkdownEngine()
         let text = """
@@ -251,6 +326,105 @@ final class MarkdownEngineTests: XCTestCase {
         XCTAssertTrue(lines.contains(where: { $0.contains("名称") && $0.contains("值") }))
         XCTAssertTrue(lines.contains(where: { $0.contains("测试") && $0.contains("甲") }))
         XCTAssertTrue(lines.last?.hasPrefix("└") == true)
+    }
+
+    // MARK: - WideTableStrategy Tests
+
+    func testAutoReadableDegradesHeavilyTruncatedWideTableToRawMarkdown() {
+        let engine = StreamingMarkdownEngine(
+            options: .init(
+                tablePolicy: .init(
+                    maxRenderedWidth: 80,
+                    minColumnWidth: 6,
+                    maxColumnWidth: 8,
+                    wideTableStrategy: .autoReadable
+                )
+            )
+        )
+        let text = """
+        | verylongname | anotherlong | yetanother | finalone | onemore |
+        | --- | --- | --- | --- | --- |
+        | aaaaaaaaaa | bbbbbbbbbb | cccccccccc | dddddddddd | eeeeeeeeee |
+        """
+        let lines = engine.render(text: text, isFinal: true)
+        XCTAssertEqual(lines, [
+            "| verylongname | anotherlong | yetanother | finalone | onemore |",
+            "| --- | --- | --- | --- | --- |",
+            "| aaaaaaaaaa | bbbbbbbbbb | cccccccccc | dddddddddd | eeeeeeeeee |",
+        ])
+        XCTAssertFalse(lines.contains(where: { $0.hasPrefix("┌") }))
+    }
+
+    func testAutoReadableKeepsBoxDrawingForModerateWidthTable() {
+        let engine = StreamingMarkdownEngine(
+            options: .init(
+                tablePolicy: .init(wideTableStrategy: .autoReadable)
+            )
+        )
+        let text = """
+        | name | score |
+        | --- | ---: |
+        | alice | 99 |
+        | bob | 7 |
+        """
+        let lines = engine.render(text: text, isFinal: true)
+        XCTAssertTrue(lines.first?.hasPrefix("┌") == true)
+        XCTAssertTrue(lines.contains(where: { $0.contains("name") && $0.contains("score") }))
+        XCTAssertTrue(lines.last?.hasPrefix("└") == true)
+        XCTAssertFalse(lines.contains(where: { $0.contains("| name | score |") }))
+    }
+
+    func testAlwaysBoxRetainsTruncatedBoxDrawingForWideTable() {
+        let engine = StreamingMarkdownEngine(
+            options: .init(
+                tablePolicy: .init(
+                    maxRenderedWidth: 80,
+                    minColumnWidth: 6,
+                    maxColumnWidth: 8,
+                    wideTableStrategy: .alwaysBox
+                )
+            )
+        )
+        let text = """
+        | verylongname | anotherlong | yetanother | finalone | onemore |
+        | --- | --- | --- | --- | --- |
+        | aaaaaaaaaa | bbbbbbbbbb | cccccccccc | dddddddddd | eeeeeeeeee |
+        """
+        let lines = engine.render(text: text, isFinal: true)
+        XCTAssertTrue(lines.first?.hasPrefix("┌") == true)
+        XCTAssertTrue(lines.contains(where: { $0.contains("…") }))
+        XCTAssertTrue(lines.last?.hasPrefix("└") == true)
+        XCTAssertFalse(lines.contains(where: { $0.contains("| verylongname |") }))
+    }
+
+    func testAutoReadablePreservesMonotonicStreamingSemantics() {
+        let engine = StreamingMarkdownEngine(
+            options: .init(
+                tablePolicy: .init(wideTableStrategy: .autoReadable),
+                tableStreamingBehavior: .monotonic
+            )
+        )
+        let partial = """
+        | name | score |
+        | --- | --- |
+        | alice
+        """
+        .trimmingCharacters(in: .newlines)
+
+        let step1 = engine.render(text: partial, isFinal: false)
+        XCTAssertEqual(step1, ["| name | score |", "| --- | --- |", "| alice"])
+
+        let completed = """
+        | name | score |
+        | --- | --- |
+        | alice | 99 |
+        """
+        .trimmingCharacters(in: .newlines)
+
+        let step2 = engine.render(text: completed, isFinal: false)
+        XCTAssertTrue(step2.first?.hasPrefix("┌") == true)
+        XCTAssertTrue(step2.contains(where: { $0.contains("alice") && $0.contains("99") }))
+        XCTAssertFalse(step2.contains(where: { $0.contains("| alice | 99 |") }))
     }
 }
 

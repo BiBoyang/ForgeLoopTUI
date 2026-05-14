@@ -7,9 +7,14 @@ public protocol MarkdownEngine: AnyObject {
 
 public struct MarkdownRenderOptions: Sendable, Equatable {
     public var tablePolicy: TableRenderPolicy
+    public var tableStreamingBehavior: TableStreamingBehavior
 
-    public init(tablePolicy: TableRenderPolicy = .default) {
+    public init(
+        tablePolicy: TableRenderPolicy = .default,
+        tableStreamingBehavior: TableStreamingBehavior = .monotonic
+    ) {
         self.tablePolicy = tablePolicy
+        self.tableStreamingBehavior = tableStreamingBehavior
     }
 }
 
@@ -19,13 +24,21 @@ public struct TableRenderPolicy: Sendable, Equatable {
     public var maxColumnWidth: Int?
     public var truncationIndicator: String
     public var overflowBehavior: TableOverflowBehavior
+    public var wideTableStrategy: WideTableStrategy
+    public var autoReadableTruncatedCellThreshold: Double
+    public var autoReadableTrimmedWidthThreshold: Double
 
+    /// Library default keeps existing zero-regression behavior (`alwaysBox`).
+    /// Consumers opt into `autoReadable` explicitly.
     public static let `default` = TableRenderPolicy(
         maxRenderedWidth: 80,
         minColumnWidth: 6,
         maxColumnWidth: 24,
         truncationIndicator: "…",
-        overflowBehavior: .compactThenTruncateThenDegrade
+        overflowBehavior: .compactThenTruncateThenDegrade,
+        wideTableStrategy: .alwaysBox,
+        autoReadableTruncatedCellThreshold: 0.4,
+        autoReadableTrimmedWidthThreshold: 0.3
     )
 
     public init(
@@ -33,19 +46,43 @@ public struct TableRenderPolicy: Sendable, Equatable {
         minColumnWidth: Int = 6,
         maxColumnWidth: Int? = 24,
         truncationIndicator: String = "…",
-        overflowBehavior: TableOverflowBehavior = .compactThenTruncateThenDegrade
+        overflowBehavior: TableOverflowBehavior = .compactThenTruncateThenDegrade,
+        wideTableStrategy: WideTableStrategy = .alwaysBox,
+        autoReadableTruncatedCellThreshold: Double = 0.4,
+        autoReadableTrimmedWidthThreshold: Double = 0.3
     ) {
         self.maxRenderedWidth = maxRenderedWidth
         self.minColumnWidth = minColumnWidth
         self.maxColumnWidth = maxColumnWidth
         self.truncationIndicator = truncationIndicator.isEmpty ? "…" : truncationIndicator
         self.overflowBehavior = overflowBehavior
+        self.wideTableStrategy = wideTableStrategy
+        self.autoReadableTruncatedCellThreshold = autoReadableTruncatedCellThreshold
+        self.autoReadableTrimmedWidthThreshold = autoReadableTrimmedWidthThreshold
     }
 }
 
 public enum TableOverflowBehavior: Sendable, Equatable {
     case degradeImmediately
     case compactThenTruncateThenDegrade
+}
+
+/// Controls how wide tables are presented when box-drawing readability suffers.
+public enum WideTableStrategy: Sendable, Equatable {
+    /// Always render tables as box-drawing tables, even when heavily truncated.
+    case alwaysBox
+    /// Degrade to raw markdown when readability would be poor due to excessive truncation.
+    case autoReadable
+}
+
+/// Controls how streaming markdown tables are rendered before completion.
+public enum TableStreamingBehavior: Sendable, Equatable {
+    /// Parse and render any currently valid table rows without regressing
+    /// to raw markdown while the last row is still streaming.
+    case monotonic
+
+    /// Keep raw markdown until the current table block is fully terminated.
+    case strict
 }
 
 public final class PlainTextMarkdownEngine: MarkdownEngine {
@@ -108,8 +145,13 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         guard let lastNewline = text.lastIndex(of: "\n") else { return 0 }
         let candidateEnd = text.index(after: lastNewline)
         let candidateText = String(text[..<candidateEnd])
+        let remainder = String(text[candidateEnd...])
 
         let lines = candidateText.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        if let retreat = retreatToAvoidSplittingTrailingStreamingTable(lines: lines, remainder: remainder) {
+            return retreat
+        }
+
         if lines.count >= 3 {
             let trailingEmpty = lines.last == ""
             let dividerIndex = trailingEmpty ? lines.count - 2 : lines.count - 1
@@ -131,11 +173,52 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         return text.distance(from: text.startIndex, to: candidateEnd)
     }
 
+    private func retreatToAvoidSplittingTrailingStreamingTable(
+        lines: [String],
+        remainder: String
+    ) -> Int? {
+        guard !remainder.isEmpty else { return nil }
+        let trimmedRemainder = remainder.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedRemainder.isEmpty, trimmedRemainder.hasPrefix("|") else { return nil }
+
+        let trailingEmpty = lines.last == ""
+        let end = trailingEmpty ? lines.count - 2 : lines.count - 1
+        guard end >= 2 else { return nil }
+
+        for start in stride(from: end - 2, through: 0, by: -1) {
+            guard let headerCells = parseTableCells(lines[start]),
+                  let divider = parseDividerCells(lines[start + 1]),
+                  divider.count == headerCells.count else {
+                continue
+            }
+
+            var allRowsMatch = true
+            for rowIndex in (start + 2)...end {
+                guard let rowCells = parseTableCells(lines[rowIndex]),
+                      rowCells.count == headerCells.count else {
+                    allRowsMatch = false
+                    break
+                }
+            }
+
+            if allRowsMatch {
+                let prefixLines = lines.prefix(start)
+                let prefixText = prefixLines.joined(separator: "\n")
+                var retreat = prefixText.count
+                if start > 0 {
+                    retreat += 1
+                }
+                return retreat
+            }
+        }
+
+        return nil
+    }
+
     private func renderFully(text: String, isFinal: Bool) -> [String] {
         guard !text.isEmpty else { return [] }
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         let endsWithNewline = text.hasSuffix("\n")
-
         var rendered: [String] = []
         var index = 0
         var inCodeFence = false
@@ -158,7 +241,12 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
                 continue
             }
 
-            if let table = parseTable(lines: lines, start: index, isFinal: isFinal, endsWithNewline: endsWithNewline) {
+            if let table = parseTable(
+                lines: lines,
+                start: index,
+                isFinal: isFinal,
+                endsWithNewline: endsWithNewline
+            ) {
                 rendered.append(contentsOf: table.lines)
                 index += table.consumed
                 continue
@@ -194,7 +282,8 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
 
         guard !dataRows.isEmpty else { return nil }
 
-        if !isFinal, cursor == lines.count, !endsWithNewline {
+        if options.tableStreamingBehavior == .strict,
+           !isFinal, cursor == lines.count, !endsWithNewline {
             return nil
         }
 
@@ -548,6 +637,17 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
             return nil
         }
 
+        if options.tablePolicy.wideTableStrategy == .autoReadable,
+           shouldDegradeForReadability(
+               idealWidths: widths,
+               resolvedWidths: resolvedWidths,
+               header: header,
+               rows: normalizedRows,
+               policy: options.tablePolicy
+           ) {
+            return nil
+        }
+
         var output: [String] = []
         output.append(borderLine(left: "┌", middle: "┬", right: "┐", widths: resolvedWidths))
         output.append(tableRow(cells: header, aligns: alignment, widths: resolvedWidths, policy: options.tablePolicy))
@@ -557,6 +657,47 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         }
         output.append(borderLine(left: "└", middle: "┴", right: "┘", widths: resolvedWidths))
         return output
+    }
+
+    private func shouldDegradeForReadability(
+        idealWidths: [Int],
+        resolvedWidths: [Int],
+        header: [String],
+        rows: [[String]],
+        policy: TableRenderPolicy
+    ) -> Bool {
+        guard policy.wideTableStrategy == .autoReadable else { return false }
+
+        let truncatedCellThreshold = max(0.0, min(1.0, policy.autoReadableTruncatedCellThreshold))
+        let trimmedWidthThreshold = max(0.0, min(1.0, policy.autoReadableTrimmedWidthThreshold))
+
+        let totalCells = (rows.count + 1) * header.count
+        guard totalCells > 0 else { return false }
+
+        var truncatedCellCount = 0
+        var totalTrimmedWidth = 0
+        var totalIdealWidth = 0
+
+        for col in 0..<header.count {
+            let resolved = resolvedWidths[col]
+            totalIdealWidth += idealWidths[col]
+            totalTrimmedWidth += max(0, idealWidths[col] - resolved)
+
+            if visibleWidth(header[col]) > resolved {
+                truncatedCellCount += 1
+            }
+            for row in rows {
+                if visibleWidth(row[col]) > resolved {
+                    truncatedCellCount += 1
+                }
+            }
+        }
+
+        let truncatedCellRatio = Double(truncatedCellCount) / Double(totalCells)
+        let trimmedWidthRatio = totalIdealWidth > 0 ? Double(totalTrimmedWidth) / Double(totalIdealWidth) : 0
+
+        return truncatedCellRatio > truncatedCellThreshold
+            || trimmedWidthRatio > trimmedWidthThreshold
     }
 
     private enum CellAlign {
