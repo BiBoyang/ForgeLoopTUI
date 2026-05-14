@@ -236,11 +236,12 @@ For a fuller testing workflow, see `TESTING.md`.
 
 ## Examples
 
-There are three runnable local example packages:
+There are four runnable local example packages:
 
 - `Examples/MinimalStreamingDemo`: stability / public-API smoke example
 - `Examples/MarkdownShowcase`: Markdown presentation example
 - `Examples/MinimalAIApp`: minimal interactive AI terminal app (prompt, streaming, cancel, declarative keybindings with readline-style chords, history). See `Examples/MinimalAIApp/KEYS.md` for the full keymap and interaction manual.
+- `Examples/AppKitExampleApp`: minimal macOS AppKit window app using the bridge (`HybridRenderState` + `HybridRenderAdapter` + `AppKitEventAdapter`)
 
 Run the smoke example with:
 
@@ -266,6 +267,13 @@ Run the minimal AI app with:
 
 ```bash
 cd Examples/MinimalAIApp
+swift run
+```
+
+Run the AppKit window example with:
+
+```bash
+cd Examples/AppKitExampleApp
 swift run
 ```
 
