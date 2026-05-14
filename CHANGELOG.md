@@ -4,13 +4,15 @@ All notable changes to this project will be documented in this file.
 
 Format and section names follow `docs/semver-and-api-stability.md` (§7).
 
-## [0.2.0] — 2026-05-13
+## [0.2.0] — 2026-05-14
 
 ### Added
 - `TUI.cursorPositioningMode` now exposes `.relative` (default) and `.marker` (physical-row + `CHA`) cursor positioning strategies for different terminal reliability needs.
 - `Viewport` and `MultiLineInputState.setViewport(_:)` provide visual-row aware `moveUp` / `moveDown` navigation for wrapped multi-line input.
 - AppKit bridge surfaces were expanded with `AppKitEventAdapter`, `HybridObservableState`, and `PanelMetadataProviding` bridge helpers.
 - Baseline performance gates were codified for `LiveBudgetPlanner`, `MultiLineInputState`, and `KeyResolver` hot paths.
+- `TableRenderPolicy` gains `WideTableStrategy` (`alwaysBox` / `autoReadable`) with configurable readability thresholds (`autoReadableTruncatedCellThreshold`, `autoReadableTrimmedWidthThreshold`). Heavily truncated tables can now degrade back to raw markdown instead of unreadable box-drawing.
+- `TableStreamingBehavior` (`monotonic` / `strict`) controls whether incomplete streaming tables are rendered progressively or held as raw markdown until terminated.
 
 ### Changed
 - API stability governance was tightened with explicit commitments around defaults, error behavior, and concurrency contracts.
