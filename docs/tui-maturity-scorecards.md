@@ -1,6 +1,7 @@
 # ForgeLoopTUI Maturity Scorecards
 
 Date: 2026-05-11
+Last Verified: 2026-05-23 (文档治理一致性复核；未在本次复核中重跑 full gate)
 Scope: `ForgeLoopTUI` roadmap tracking and milestone prioritization
 
 ## 评分口径
@@ -64,7 +65,7 @@ Scope: `ForgeLoopTUI` roadmap tracking and milestone prioritization
 
 ### 何时允许改分
 
-必须同时满足以下至少一项可验证产出：
+满足以下任一项可验证产出：
 
 1. **代码**：相关功能已合并到主干，且 `swift test` 通过。
 2. **测试**：新增/更新的测试覆盖该维度核心路径，且 CI/本地验证通过。
@@ -87,6 +88,17 @@ Scope: `ForgeLoopTUI` roadmap tracking and milestone prioritization
 - 单次改分幅度限制：
   - 升分：单维度单次不超过 `+0.5`
   - 降分：单维度单次不超过 `-1.0`（重大回归才允许大幅降分）
+
+### 超限升分例外（> +0.5）治理规则
+
+- 历史或新增的超限升分必须补齐例外记录，否则视为治理不完整。
+- 例外记录最少包含：
+  - 例外类型（如：质变里程碑 / 多阶段收口一次性入账）
+  - 影响维度与升分幅度
+  - 证据包（至少一个 commit SHA + 一个可重放测试命令 + 一个文档定位）
+  - 批准人（maintainer）与批准日期
+  - time-box 与回滚点（若后续证据不成立或出现回归）
+- 自 2026-05-23 起，新增评分记录默认严格执行 `+0.5` 上限；超限必须先有例外记录再改分。
 
 ### 评分回退规则
 
@@ -137,6 +149,24 @@ Scope: `ForgeLoopTUI` roadmap tracking and milestone prioritization
 | 2026-05-11 | 9（发布治理） | +0.8 | post-M7 收口：`cross-repo-gate.sh` quick/full 常态化、pre-release drill 模板化、release checklist 与 SOP 对齐 | `pre-release-drill-template.md` + `release-checklist.md` + `post-m7-maintenance-protocol.md` |
 | 2026-05-12 | 10（AppKit 桥接） | +2.5 (A) / +1.3 (B) | P0 完成：双向桥接（NSEvent→KeyEvent）、Observable 状态（@MainActor）、降级路径、PanelMetadataProviding→PanelMeta 桥接入口 | P0 completed |
 > **例外说明（+2.5 幅度）**：单次升分超过治理上限 `+0.5`。例外理由：P0 是从 M6 demo（单向投影，4.5分）到可复用双向桥接闭环（7.0分）的**质变里程碑**，非渐进改善。证据：48 tests + cross-repo-gate 全绿 + 4 API 面新增类型文档化。此后维度的后续升分将严格遵循 `+0.5` 上限。 |
+
+### 历史超限升分补录（2026-05-23）
+
+以下记录在治理规则明确前已发生，现统一补录为“历史例外”（证据包补录日期：2026-05-23）：
+
+| 日期 | 维度 | 幅度 | 例外类型 | commit SHA（补录） | 可重放命令（补录） | 文档定位（补录） |
+|---|---:|---:|:---|:---|:---|:---|
+| 2026-05-11 | 3（committed/live） | +1.8 | 多阶段收口一次性入账 | `f7ce75c`, `bc81d9c` | `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && swift test --filter CommittedLiveRenderTests` | `docs/tui-maturity-scorecards.md:24`; `docs/integration-guide.md:96`; `docs/integration-guide.md:104` |
+| 2026-05-11 | 4（布局系统通用性） | +1.5 | 多阶段收口一次性入账 | `fddab92`, `1793747` | `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && swift test --filter ScreenLayoutRendererTests` | `docs/tui-maturity-scorecards.md:25`; `docs/integration-guide.md:179`; `docs/integration-guide.md:182` |
+| 2026-05-11 | 9（文档与 DX） | +1.2 | 文档收口批量入账 | `248c7ff` | `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && swift test --filter PublicAPISmokeTests` | `README.md:208`; `docs/integration-guide.md:16`; `docs/migration-guide-for-forgeloopcli.md:76` |
+| 2026-05-11 | 5（性能稳定性） | +0.6 | 基线治理策略收口 | `bc81d9c`, `b96ae9b` | `cd /Users/boyang/Desktop/WebKit_build/ForgeLoop && swift test --filter PerformanceBaselineTests && swift test --filter PerformanceGateTests` | `docs/tui-maturity-scorecards.md:148`; `docs/performance-baseline.md:9`; `docs/performance-baseline.md:108` |
+| 2026-05-11 | 9（发布治理） | +0.8 | 发布流程治理收口 | `b96ae9b`, `5b6d079` | `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && ./Scripts/cross-repo-gate.sh --quick` | `docs/pre-release-drill-template.md:15`; `docs/release-checklist.md:67`; `docs/post-m7-maintenance-protocol.md:66` |
+| 2026-05-12 | 10（AppKit 桥接） | +1.3 (B) | 与 A 维同源质变里程碑联动入账 | `5b6d079` | `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && swift test --filter AppKitEventAdapterTests && swift test --filter HybridObservableStateTests && swift test --filter HybridRenderAdapterTests` | `docs/tui-maturity-scorecards.md:31`; `docs/appkit-hybrid-bridge-demo.md:190`; `docs/public-api-surface.md:175` |
+
+- 处理原则：
+  - 不追溯修改历史分值；
+  - 仅补齐治理可追溯性；
+  - 后续新增评分严格按“上限规则 + 例外先登记”执行。
 
 ---
 

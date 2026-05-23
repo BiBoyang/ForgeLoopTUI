@@ -1,7 +1,7 @@
 # SemVer and API Stability Policy
 
-Date: 2026-05-11  
-Applies to: `ForgeLoopTUI` Swift Package, version `0.2.0` and onward  
+Date: 2026-05-23  
+Applies to: `ForgeLoopTUI` Swift Package, version `1.0.0` and onward  
 Policy version: 1.0
 
 ---
@@ -79,7 +79,7 @@ Example: `PromptHistory` (`docs/prompt-history-api-decision.md`) follows this ga
    - The earliest version in which it may be removed.
 3. **Example**:
    ```swift
-   @available(*, deprecated, message: "Use applyCore(_:) with CoreRenderEvent instead. Deprecated in 0.2.0; will be removed in 0.4.0.")
+   @available(*, deprecated, message: "Use applyCore(_:) with CoreRenderEvent instead. Deprecated in 0.2.0; will be removed in 1.1.0.")
    public func apply(_ event: RenderEvent) { ... }
    ```
 4. **Deprecated APIs are not tested in new test suites**. Existing tests keep them green until removal.
@@ -123,11 +123,13 @@ If any of these fail, the release is **blocked**.
 
 ---
 
-## 6. Pre-1.0 exception
+## 6. Post-1.0 policy
 
-Until `1.0.0`, MINOR releases may contain breaking changes to **Provisional** APIs without a MAJOR bump. **Stable** APIs still require MAJOR bumps even pre-1.0.
+From `1.0.0` onward:
 
-After `1.0.0`, all **Stable** APIs require MAJOR bumps. **Provisional** APIs may still evolve in MINOR releases.
+- **Stable** APIs follow full SemVer MAJOR protection.
+- **Provisional** APIs may evolve in MINOR releases, but must follow the evolution gate in §3.1.
+- Any behavior change that violates documented invariants is treated as breaking and requires a MAJOR bump.
 
 ---
 

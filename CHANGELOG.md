@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 Format and section names follow `docs/semver-and-api-stability.md` (§7).
 
+## [1.0.0] — 2026-05-23
+
+### Added
+- `1.0.0` release line for consumers who need SemVer-stable dependency pinning.
+
+### Changed
+- SemVer policy is now explicitly post-1.0 (`docs/semver-and-api-stability.md`), including updated deprecation example removal target (`1.1.0`).
+- Version references are aligned to `1.0.0` across release-facing docs (`README.md`, `docs/public-api-surface.md`, `docs/performance-baseline.md`, `docs/migration-guide-for-forgeloopcli.md`).
+- Maturity scorecard governance records were completed with line-precise evidence packs for historical over-cap score deltas.
+
+### Deprecated
+- None.
+
+### Removed
+- None.
+
+### Fixed
+- Documentation ambiguity in score update eligibility wording ("同时满足以下至少一项" -> "满足以下任一项").
+
+### Security
+- None.
+
 ## [0.2.0] — 2026-05-14
 
 ### Added

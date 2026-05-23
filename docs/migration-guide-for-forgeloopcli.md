@@ -105,7 +105,7 @@ If you are migrating from an internal `ForgeLoopCli`-style consumer to a standal
 
 1. **Version pinning**
    - Internal consumers often track `main` or a local path dependency.
-   - Third-party consumers should pin to a released version (`from: "0.2.0"`) and review `CHANGELOG.md` before upgrading.
+   - Third-party consumers should pin to a released version (`from: "1.0.0"`) and review `CHANGELOG.md` before upgrading.
 
 2. **API stability expectations**
    - Internal consumers may use **Internal-detail** APIs (e.g. `ByteStreamBuffer`, `KeyParser`) because they are co-located.
