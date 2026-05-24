@@ -133,4 +133,57 @@ final class TranscriptRendererToolResultTests: XCTestCase {
         XCTAssertTrue(lines.contains("⎿ done: line1"))
         XCTAssertTrue(lines.contains("⎿ done: line2"))
     }
+
+    // MARK: - Configurable options
+
+    func testCustomSummaryLinesThreshold() {
+        let options = TranscriptRenderOptions(maxSummaryChars: 200, maxSummaryLines: 1)
+        let renderer = TranscriptRenderer(options: options)
+        renderer.apply(.toolExecutionStart(toolCallId: "tc-opt", toolName: "cat", args: "{}"))
+        renderer.apply(.toolExecutionEnd(toolCallId: "tc-opt", toolName: "cat", isError: false, summary: "line1\nline2\nline3"))
+
+        let lines = renderer.transcriptLines
+        // Only 1 line kept, rest truncated
+        XCTAssertTrue(lines.contains("⎿ done: line1"))
+        XCTAssertFalse(lines.contains("⎿ done: line2"))
+        XCTAssertFalse(lines.contains("⎿ done: line3"))
+        // Ellipsis indicator present
+        XCTAssertTrue(lines.contains("⎿ done: ..."))
+    }
+
+    func testCustomSummaryCharsThreshold() {
+        let options = TranscriptRenderOptions(maxSummaryChars: 5, maxSummaryLines: 3)
+        let renderer = TranscriptRenderer(options: options)
+        renderer.apply(.toolExecutionStart(toolCallId: "tc-chars", toolName: "echo", args: "{}"))
+        renderer.apply(.toolExecutionEnd(toolCallId: "tc-chars", toolName: "echo", isError: false, summary: "1234567890"))
+
+        let lines = renderer.transcriptLines
+        // Truncated at 5 chars + "..."
+        XCTAssertTrue(lines.contains("⎿ done: 12345..."))
+    }
+
+    func testNegativeOptionsAreClampedToMinimum() {
+        let opts = TranscriptRenderOptions(maxSummaryChars: -5, maxSummaryLines: -1, maxNotificationLines: 0)
+        XCTAssertEqual(opts.maxSummaryChars, 1)
+        XCTAssertEqual(opts.maxSummaryLines, 1)
+        XCTAssertEqual(opts.maxNotificationLines, 1)
+
+        // Should not crash with clamped values
+        let renderer = TranscriptRenderer(options: opts)
+        renderer.applyCore(.operationStart(id: "t1", header: "h", status: "s"))
+        renderer.applyCore(.operationEnd(id: "t1", isError: false, result: "line1\nline2"))
+        _ = renderer.transcriptLines
+    }
+
+    func testDefaultOptionsAreBackwardCompatible() {
+        let renderer = TranscriptRenderer() // default options
+        renderer.apply(.toolExecutionStart(toolCallId: "tc-def", toolName: "bash", args: "{}"))
+        renderer.apply(.toolExecutionEnd(toolCallId: "tc-def", toolName: "bash", isError: false, summary: String(repeating: "x", count: 130)))
+
+        let lines = renderer.transcriptLines
+        // Default maxSummaryChars = 120, so line should be truncated
+        let summaryLine = lines.first { $0.contains("⎿ done:") }!
+        XCTAssertTrue(summaryLine.hasSuffix("..."))
+        XCTAssertEqual(summaryLine.count, "⎿ done: ".count + 120 + 3)
+    }
 }

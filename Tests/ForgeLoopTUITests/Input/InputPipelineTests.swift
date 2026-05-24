@@ -277,10 +277,3 @@ struct InputPipelineTests {
     }
 }
 
-// MARK: - Test Helpers
-
-final class TestInputClock: InputClock, @unchecked Sendable {
-    var current: UInt64 = 0
-    func advance(by nanoseconds: UInt64) { current += nanoseconds }
-    func now() -> UInt64 { current }
-}

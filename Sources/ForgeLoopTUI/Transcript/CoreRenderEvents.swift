@@ -17,6 +17,15 @@ public enum CoreRenderEvent: Sendable, Equatable {
     /// 结束内容块，追加可选 footer（如错误消息）。
     case blockEnd(id: String, lines: [String], footer: String?)
 
+    /// 取消进行中的内容块（用户中断等）。
+    /// 与 `blockEnd` 不同：流式内容被丢弃，仅保留取消标记。
+    case blockCancel(id: String)
+
+    /// 模型思考/推理内容（与普通 assistant 文本区分渲染）。
+    /// - content: 当前累积的思考文本
+    /// - isFinal: 是否为最终块（thinking 已结束）
+    case thinking(content: String, isFinal: Bool)
+
     /// 开始一个追踪中的操作。
     /// - header: 操作标题行（如 "● toolName(args)"）
     /// - status: 初始状态行（如 "⎿ running..."）

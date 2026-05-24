@@ -212,4 +212,72 @@ final class TranscriptRendererTests: XCTestCase {
 
         XCTAssertEqual(renderer.transcriptLines, ["❯ line1", "line2", "line3", ""])
     }
+
+    // MARK: - blockCancel (CoreRenderEvent)
+
+    func testBlockCancelClearsStreamingState() {
+        let renderer = TranscriptRenderer()
+        renderer.applyCore(.blockStart(id: "b1"))
+        renderer.applyCore(.blockUpdate(id: "b1", lines: ["streaming content"]))
+        XCTAssertNotNil(renderer.activeStreamingRange)
+
+        renderer.applyCore(.blockCancel(id: "b1"))
+
+        // Streaming range is cleared
+        XCTAssertNil(renderer.activeStreamingRange)
+        // Transcript contains cancellation marker + blank separator
+        let lines = renderer.transcriptLines
+        XCTAssertTrue(lines.contains("[cancelled]"))
+        // Streaming content is discarded
+        XCTAssertFalse(lines.contains("streaming content"))
+    }
+
+    func testBlockCancelDoesNotAffectOtherContent() {
+        let renderer = TranscriptRenderer()
+        renderer.applyCore(.insert(lines: ["before"]))
+        renderer.applyCore(.blockStart(id: "b1"))
+        renderer.applyCore(.blockUpdate(id: "b1", lines: ["streaming"]))
+        renderer.applyCore(.blockCancel(id: "b1"))
+        renderer.applyCore(.insert(lines: ["after"]))
+
+        let lines = renderer.transcriptLines
+        XCTAssertTrue(lines.contains("before"))
+        XCTAssertTrue(lines.contains("after"))
+        XCTAssertTrue(lines.contains("[cancelled]"))
+        XCTAssertFalse(lines.contains("streaming"))
+    }
+
+    // MARK: - thinking (CoreRenderEvent)
+
+    func testThinkingRendersWithPrefix() {
+        let renderer = TranscriptRenderer()
+        renderer.applyCore(.thinking(content: "reasoning step 1", isFinal: false))
+
+        let lines = renderer.transcriptLines
+        XCTAssertTrue(lines.contains("💭 reasoning step 1"))
+    }
+
+    func testThinkingStreamingReplacesPrevious() {
+        let renderer = TranscriptRenderer()
+        renderer.applyCore(.thinking(content: "old reasoning", isFinal: false))
+        renderer.applyCore(.thinking(content: "new reasoning", isFinal: false))
+
+        let lines = renderer.transcriptLines
+        // New content replaces old
+        XCTAssertFalse(lines.contains("💭 old reasoning"))
+        XCTAssertTrue(lines.contains("💭 new reasoning"))
+    }
+
+    func testThinkingFinalAddsBlankSeparator() {
+        let renderer = TranscriptRenderer()
+        renderer.applyCore(.thinking(content: "done thinking", isFinal: true))
+        renderer.applyCore(.insert(lines: ["assistant response"]))
+
+        let lines = renderer.transcriptLines
+        XCTAssertTrue(lines.contains("💭 done thinking"))
+        // Blank separator between thinking and assistant
+        let thinkingIdx = lines.firstIndex(of: "💭 done thinking")!
+        XCTAssertEqual(lines[thinkingIdx + 1], "")
+        XCTAssertEqual(lines[thinkingIdx + 2], "assistant response")
+    }
 }

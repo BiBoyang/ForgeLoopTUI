@@ -102,6 +102,11 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
     private let thematicBreak = String(repeating: "─", count: 24)
     public let options: MarkdownRenderOptions
 
+    /// 稳定前缀缓存上限（字符数）。超出后触发 reset，丢弃旧缓存以避免长会话
+    /// 中 stableSource/stableRendered 无界增长。reset 后内容仍正确渲染，
+    /// 仅丢失稳定前缀的增量优化（下一次渲染会重建缓存）。
+    private let maxStableSourceChars = 65_536
+
     public init(options: MarkdownRenderOptions = .init()) {
         self.options = options
     }
@@ -118,6 +123,11 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         }
 
         if !stableSource.isEmpty, !text.hasPrefix(stableSource) {
+            reset()
+        }
+
+        // Cap stable prefix growth — reset if exceeded to bound memory in long sessions.
+        if stableSource.count > maxStableSourceChars {
             reset()
         }
 
@@ -307,7 +317,102 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
 
     private func renderInlineMarkdown(_ line: String) -> String {
         guard !line.isEmpty else { return line }
-        return renderStructuredLine(line) ?? line
+        let blockLevel = renderStructuredLine(line) ?? line
+        return applyInlineFormatting(blockLevel)
+    }
+
+    /// Apply inline formatting: code spans (`` ` ``), bold (`**`), italic (`*`),
+    /// and links (`[text](url)`). Code spans take priority — no formatting within them.
+    private func applyInlineFormatting(_ text: String) -> String {
+        var result = ""
+        var i = text.startIndex
+        while i < text.endIndex {
+            if text[i] == "`" {
+                // Code span: find matching closing backtick(s)
+                let (content, consumed) = parseCodeSpan(from: text, start: i)
+                result += "\u{1B}[7m\(content)\u{1B}[0m"
+                i = text.index(i, offsetBy: consumed)
+                continue
+            }
+            // Link: [text](url) — requires no space between ](
+            var linkParsed = false
+            if text[i] == "[", let closeBracket = text[text.index(after: i)...].firstIndex(of: "]") {
+                let afterBracket = text.index(after: closeBracket)
+                if afterBracket < text.endIndex, text[afterBracket] == "(",
+                   let closeParen = text[text.index(after: afterBracket)...].firstIndex(of: ")") {
+                    let linkText = String(text[text.index(after: i)..<closeBracket])
+                    let url = String(text[text.index(after: afterBracket)..<closeParen])
+                    if !linkText.isEmpty, !url.isEmpty {
+                        result += "\u{1B}[4m\(linkText)\u{1B}[0m \u{1B}[2m(\(url))\u{1B}[0m"
+                        i = text.index(after: closeParen)
+                        linkParsed = true
+                    }
+                }
+            }
+            if linkParsed { continue }
+            let nextIdx = text.index(after: i)
+            if nextIdx < text.endIndex, text[i] == "*", text[nextIdx] == "*" {
+                // Bold: **text**
+                let afterStars = text.index(i, offsetBy: 2)
+                if let end = text[afterStars...].firstRange(of: "**") {
+                    let content = String(text[afterStars..<end.lowerBound])
+                    if !content.isEmpty {
+                        result += "\u{1B}[1m\(content)\u{1B}[0m"
+                        i = end.upperBound
+                        continue
+                    }
+                }
+            }
+            if text[i] == "*" {
+                // Italic: *text* (but not ** which is handled above).
+                let afterStar = text.index(after: i)
+                if afterStar < text.endIndex, text[afterStar] != " ",
+                   let end = text[afterStar...].firstIndex(of: "*"),
+                   end != afterStar {
+                    let content = String(text[afterStar..<end])
+                    if !content.isEmpty {
+                        result += "\u{1B}[3m\(content)\u{1B}[0m"
+                        i = text.index(after: end)
+                        continue
+                    }
+                }
+            }
+            result.append(text[i])
+            i = text.index(after: i)
+        }
+        return result
+    }
+
+    /// Parse a code span starting at `start` (a backtick). Returns (content, characters consumed).
+    private func parseCodeSpan(from text: String, start: String.Index) -> (String, Int) {
+        // Count opening backticks
+        var openCount = 0
+        var i = start
+        while i < text.endIndex, text[i] == "`" {
+            openCount += 1
+            i = text.index(after: i)
+        }
+        // Find matching closing backticks
+        let contentStart = i
+        while i < text.endIndex {
+            if text[i] == "`" {
+                var closeCount = 0
+                var j = i
+                while j < text.endIndex, text[j] == "`", closeCount < openCount {
+                    closeCount += 1
+                    j = text.index(after: j)
+                }
+                if closeCount == openCount {
+                    let content = String(text[contentStart..<i])
+                    let consumed = text.distance(from: start, to: j)
+                    return (content, consumed)
+                }
+            }
+            i = text.index(after: i)
+        }
+        // No closing backticks found — return the backticks as literal text
+        let literal = String(text[start..<contentStart])
+        return (literal, openCount)
     }
 
     private func renderStructuredLine(_ line: String) -> String? {

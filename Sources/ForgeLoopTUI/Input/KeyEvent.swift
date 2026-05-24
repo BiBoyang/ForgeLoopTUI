@@ -31,5 +31,6 @@ public struct Modifiers: OptionSet, Sendable, Hashable {
     public static let shift = Modifiers(rawValue: 1 << 0)
     public static let alt = Modifiers(rawValue: 1 << 1)
     public static let ctrl = Modifiers(rawValue: 1 << 2)
+    public static let command = Modifiers(rawValue: 1 << 3)
     public init(rawValue: UInt8) { self.rawValue = rawValue }
 }

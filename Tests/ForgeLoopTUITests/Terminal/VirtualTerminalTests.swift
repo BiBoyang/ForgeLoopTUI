@@ -216,4 +216,83 @@ final class VirtualTerminalTests: XCTestCase {
         XCTAssertEqual(vt.cursorRow, 1)
         XCTAssertEqual(vt.cursorCol, 4)
     }
+
+    // MARK: - CSI L/M (Insert/Delete Lines)
+
+    func testInsertLinesShiftsContentDown() {
+        let vt = VirtualTerminal(width: 8, height: 5)
+        // Populate rows 1-5 with explicit CUP, avoiding autowrap interaction
+        vt.write("\u{1B}[1;1Haaaaa\u{1B}[2;1Hbbbbb\u{1B}[3;1Hccccc\u{1B}[4;1Hddddd\u{1B}[5;1Heeeee")
+        // Move to row 3, insert 2 lines
+        vt.write("\u{1B}[3;1H\u{1B}[2L")
+        XCTAssertEqual(vt.screenLines[0], "aaaaa   ")
+        XCTAssertEqual(vt.screenLines[1], "bbbbb   ")
+        XCTAssertTrue(vt.screenLines[2].allSatisfy { $0 == " " })
+        XCTAssertTrue(vt.screenLines[3].allSatisfy { $0 == " " })
+        XCTAssertEqual(vt.screenLines[4], "ccccc   ")
+    }
+
+    func testInsertLinesDefaultCountIsOne() {
+        let vt = VirtualTerminal(width: 5, height: 3)
+        vt.write("\u{1B}[1;1HAAAA\u{1B}[2;1HBBBB\u{1B}[3;1HCCCC")
+        // Go to row 2, verify, insert 1 line
+        vt.write("\u{1B}[2;1H")
+        XCTAssertEqual(vt.screenLines[1], "BBBB ")
+        vt.write("\u{1B}[L")
+        XCTAssertEqual(vt.screenLines[0], "AAAA ")
+        XCTAssertTrue(vt.screenLines[1].allSatisfy { $0 == " " })
+        XCTAssertEqual(vt.screenLines[2], "BBBB ")
+    }
+
+    func testInsertLinesClampsToRemainingHeight() {
+        let vt = VirtualTerminal(width: 5, height: 3)
+        vt.write("\u{1B}[1;1HA\u{1B}[2;1HB\u{1B}[3;1HC")
+        vt.write("\u{1B}[3;1H\u{1B}[10L") // request 10, clamps to 1
+        XCTAssertEqual(vt.screenLines[0], "A    ")
+        XCTAssertEqual(vt.screenLines[1], "B    ")
+        XCTAssertTrue(vt.screenLines[2].allSatisfy { $0 == " " })
+    }
+
+    func testDeleteLinesShiftsContentUp() {
+        let vt = VirtualTerminal(width: 8, height: 5)
+        vt.write("\u{1B}[1;1Haaaaa\u{1B}[2;1Hbbbbb\u{1B}[3;1Hccccc\u{1B}[4;1Hddddd\u{1B}[5;1Heeeee")
+        // Move to row 2, delete 2 lines
+        vt.write("\u{1B}[2;1H\u{1B}[2M")
+        XCTAssertEqual(vt.screenLines[0], "aaaaa   ")
+        XCTAssertEqual(vt.screenLines[1], "ddddd   ")
+        XCTAssertEqual(vt.screenLines[2], "eeeee   ")
+        XCTAssertTrue(vt.screenLines[3].allSatisfy { $0 == " " })
+        XCTAssertTrue(vt.screenLines[4].allSatisfy { $0 == " " })
+    }
+
+    func testDeleteLinesDefaultCountIsOne() {
+        let vt = VirtualTerminal(width: 5, height: 3)
+        vt.write("\u{1B}[1;1HAAAA\u{1B}[2;1HBBBB\u{1B}[3;1HCCCC")
+        vt.write("\u{1B}[1;1H\u{1B}[M") // delete 1 line at top
+        XCTAssertEqual(vt.screenLines[0], "BBBB ")
+        XCTAssertEqual(vt.screenLines[1], "CCCC ")
+        XCTAssertTrue(vt.screenLines[2].allSatisfy { $0 == " " })
+    }
+
+    func testDeleteLinesClampsToRemainingHeight() {
+        let vt = VirtualTerminal(width: 5, height: 3)
+        vt.write("\u{1B}[1;1HA\u{1B}[2;1HB\u{1B}[3;1HC")
+        vt.write("\u{1B}[3;1H\u{1B}[10M") // request 10, clamps to 1
+        XCTAssertEqual(vt.screenLines[0], "A    ")
+        XCTAssertEqual(vt.screenLines[1], "B    ")
+        XCTAssertTrue(vt.screenLines[2].allSatisfy { $0 == " " })
+    }
+
+    func testInsertDeleteLinesAreIdempotent() {
+        let vt = VirtualTerminal(width: 5, height: 4)
+        vt.write("\u{1B}[1;1HAAAA\u{1B}[2;1HBBBB\u{1B}[3;1HCCCC")
+        vt.write("\u{1B}[2;1H\u{1B}[1L") // insert 1 line at row 2
+        XCTAssertTrue(vt.screenLines[1].allSatisfy { $0 == " " })
+        XCTAssertEqual(vt.screenLines[2], "BBBB ")
+        XCTAssertEqual(vt.screenLines[3], "CCCC ")
+        vt.write("\u{1B}[1M") // delete 1 line at row 2 (cursor still there)
+        XCTAssertEqual(vt.screenLines[0], "AAAA ")
+        XCTAssertEqual(vt.screenLines[1], "BBBB ")
+        XCTAssertEqual(vt.screenLines[2], "CCCC ")
+    }
 }

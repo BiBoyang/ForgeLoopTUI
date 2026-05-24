@@ -30,19 +30,12 @@ public struct AppKitEventAdapter: Sendable {
 
         let modifiers = mapModifiers(event.modifierFlags)
 
-        // .command 不映射为字符事件；若事件又不属于已知 specialKey / fallback key，
-        // 则返回 nil（静默丢弃）。
-        let hasCommand = event.modifierFlags.contains(.command)
-
         if let specialKey = event.specialKey {
             return mapSpecialKey(specialKey, modifiers: modifiers)
                 ?? mapKeyCodeFallback(event.keyCode, modifiers: modifiers)
         }
 
         if let characters = event.characters, !characters.isEmpty {
-            if hasCommand {
-                return nil
-            }
             return mapPrintableCharacters(characters, modifiers: modifiers)
         }
 
@@ -195,9 +188,9 @@ public struct AppKitEventAdapter: Sendable {
             modifiers.insert(.ctrl)
         }
 
-        // TODO: .command → Modifiers.command (requires API evolution)
-        // .command 不映射为字符事件；若事件又不属于已知 specialKey / fallback key，
-        // 上层调用将收到 nil（静默丢弃）。
+        if flags.contains(.command) {
+            modifiers.insert(.command)
+        }
 
         return modifiers
     }

@@ -1,4 +1,18 @@
 import Foundation
+
+/// TUI 渲染诊断事件，通过 `TUI.diagnosticsHandler` 可选回调发出。
+/// 默认关闭，零性能侵入。
+public enum TUIRenderDiagnostic: Sendable {
+    /// 触发了全量重绘（清屏+重写），包含触发原因。
+    case fullRedraw(reason: String)
+    /// 使用了增量 diff 渲染。
+    case diff(linesChanged: Int, physicalRows: Int)
+    /// live budget 沉降发生。
+    case budgetSettled(linesSettled: Int)
+    /// 触发了 committed 纯追加快速路径。
+    case fastPath(appendedLines: Int)
+}
+
 /// 将旧版 `FrameWriter` 桥接到 `Terminal` 协议的内部适配器。
 private struct WriterTerminal: Terminal {
     let isTTY: Bool
@@ -35,6 +49,9 @@ public final class TUI: @unchecked Sendable {
     public private(set) var terminalWidth: Int
     public private(set) var terminalHeight: Int
     private let terminal: Terminal
+
+    /// 可选诊断回调，默认 nil（零开销）。设置后，渲染关键决策会触发回调。
+    public var diagnosticsHandler: (@Sendable (TUIRenderDiagnostic) -> Void)?
 
     private let lock = NSLock()
     private var previousLines: [String] = []
@@ -118,7 +135,16 @@ public final class TUI: @unchecked Sendable {
         }
     }
 
-    public func invalidate() {}
+    /// 标记终端缓存状态已失效（如 resize、外部清屏等），强制重算所有物理行缓存。
+    /// 仅重算缓存，不修改终端宽高；幂等。
+    public func invalidate() {
+        lock.withLock {
+            // 仅重算物理行缓存，不修改宽高（避免并发场景下覆盖并发更新的尺寸值）
+            lastFramePhysicalRows = totalPhysicalRows(for: previousLines)
+            lastCommittedPhysicalRows = totalPhysicalRows(for: committedLines)
+            lastLivePhysicalRows = totalPhysicalRows(for: previousLiveLines)
+        }
+    }
 
     // MARK: - Placement undo plumbing
     //
@@ -176,6 +202,7 @@ public final class TUI: @unchecked Sendable {
             renderLegacy(lines: normalizedLines, cursorOffset: cursorOffset)
         case .inlineAnchor:
             if shouldFallbackToFullRedraw(for: normalizedLines) {
+                diagnosticsHandler?(.fullRedraw(reason: "frame exceeds terminal height"))
                 syncRetainedState(lines: normalizedLines, committed: normalizedLines, live: [], cursorOffset: cursorOffset)
                 renderLegacy(lines: normalizedLines, cursorOffset: cursorOffset)
             } else {
@@ -373,6 +400,10 @@ public final class TUI: @unchecked Sendable {
     private func applyLiveBudget(committed: [String], live: [String]) -> (committed: [String], live: [String]) {
         let planner = LiveBudgetPlanner(mode: liveBudgetMode, budget: liveBudget, width: terminalWidth)
         let plan = planner.plan(committed: committed, live: live)
+        let settled = plan.committed.count - committed.count
+        if settled > 0 {
+            diagnosticsHandler?(.budgetSettled(linesSettled: settled))
+        }
         return (plan.committed, plan.live)
     }
 
@@ -395,6 +426,7 @@ public final class TUI: @unchecked Sendable {
             renderLegacy(lines: allLines, cursorOffset: cursorOffset)
         case .inlineAnchor:
             if shouldFallbackToFullRedraw(committed: committed, live: live) {
+                diagnosticsHandler?(.fullRedraw(reason: "committed+live exceeds terminal height"))
                 let allLines = committed + live
                 syncRetainedState(lines: allLines, committed: committed, live: live, cursorOffset: cursorOffset)
                 renderLegacy(lines: allLines, cursorOffset: cursorOffset)
@@ -609,6 +641,7 @@ public final class TUI: @unchecked Sendable {
                 physicalRows(for: $0, width: terminalWidth) == 1
             }
             if appendedAllSingleRow {
+                diagnosticsHandler?(.fastPath(appendedLines: appendedCount))
                 var output = "\r"
                 // Rewind to first live line
                 if prevLiveRows > 0 {
@@ -632,6 +665,13 @@ public final class TUI: @unchecked Sendable {
                 return
             }
         }
+
+        // Emit diff diagnostic before generating output
+        let totalChangedLines: Int
+        if let cd = committedDiff { totalChangedLines = committed.count - cd }
+        else if let ld = liveDiff { totalChangedLines = live.count - ld }
+        else { totalChangedLines = 0 }
+        diagnosticsHandler?(.diff(linesChanged: totalChangedLines, physicalRows: 0))
 
         // 3. 确定 diff 起始行（回退一行以保留上下文）
         let startLineIndex: Int

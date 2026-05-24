@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import ForgeLoopTUI
 
@@ -106,5 +107,44 @@ struct InputReaderLifecycleTests {
         }
 
         #expect(!reader.running)
+    }
+
+    @Test("bytes written to PTY arrive at onEvent callback")
+    func testBytesArriveAtCallback() throws {
+        guard let pty = openPTY() else {
+            Issue.record("Failed to open PTY")
+            return
+        }
+        defer {
+            close(pty.master)
+            close(pty.slave)
+        }
+
+        let collector = EventCollector()
+        let reader = InputReader(
+            tty: RawTTY(fd: pty.slave),
+            onEvent: { [weak collector] events in
+                collector?.append(events)
+            }
+        )
+
+        try reader.start()
+        let bytes: [UInt8] = [0x61, 0x62, 0x63] // "abc"
+        write(pty.master, bytes, bytes.count)
+
+        // Brief sleep for dispatch source to fire
+        Thread.sleep(forTimeInterval: 0.2)
+        reader.stop()
+
+        #expect(!collector.events.isEmpty)
+    }
+
+    private final class EventCollector: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _events: [KeyEvent] = []
+        var events: [KeyEvent] { lock.withLock { _events } }
+        func append(_ events: [KeyEvent]) {
+            lock.withLock { _events.append(contentsOf: events) }
+        }
     }
 }

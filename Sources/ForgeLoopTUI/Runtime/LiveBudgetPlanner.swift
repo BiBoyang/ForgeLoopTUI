@@ -52,6 +52,9 @@ internal struct LiveBudgetPlanner: Sendable {
         }
 
         // Invariant: keep at least one live line so a diff/cursor anchor exists.
+        // `guard !live.isEmpty` above ensures this; the assert protects against
+        // future refactoring that could reorder or remove the guard.
+        assert(!live.isEmpty, "liveBudget planner reached settlement with empty live — guard contract violated")
         let maxSettle = live.count - 1
         var settleCount = 0
         while settleCount < maxSettle, remaining > budget {

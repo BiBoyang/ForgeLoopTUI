@@ -5,19 +5,7 @@ import Testing
 @Suite("Committed/Live Rendering")
 struct CommittedLiveRenderTests {
 
-    private final class OutputSpy: @unchecked Sendable {
-        private let lock = NSLock()
-        private var _outputs: [String] = []
-
-        var outputs: [String] { lock.withLock { _outputs } }
-        var last: String? { lock.withLock { _outputs.last } }
-
-        lazy var writer: FrameWriter = { [weak self] text in
-            self?.lock.withLock { self?._outputs.append(text) }
-        }
-    }
-
-    @Test("first render outputs full frame without clear screen")
+@Test("first render outputs full frame without clear screen")
     func testFirstRenderNoClearScreen() {
         let spy = OutputSpy()
         let tui = TUI(strategy: .inlineAnchor, writer: spy.writer)

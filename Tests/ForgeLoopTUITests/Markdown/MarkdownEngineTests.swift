@@ -426,6 +426,86 @@ final class MarkdownEngineTests: XCTestCase {
         XCTAssertTrue(step2.contains(where: { $0.contains("alice") && $0.contains("99") }))
         XCTAssertFalse(step2.contains(where: { $0.contains("| alice | 99 |") }))
     }
+
+    // MARK: - Inline formatting
+
+    func testInlineCodeSpanWrapsWithReverseVideo() {
+        let engine = StreamingMarkdownEngine()
+        let result = engine.render(text: "Use `git status` now", isFinal: true)
+        XCTAssertEqual(result.count, 1)
+        XCTAssertTrue(result[0].contains("\u{1B}[7mgit status\u{1B}[0m"))
+    }
+
+    func testInlineBoldWrapsWithBoldANSI() {
+        let engine = StreamingMarkdownEngine()
+        let result = engine.render(text: "Hello **world** here", isFinal: true)
+        XCTAssertEqual(result.count, 1)
+        XCTAssertTrue(result[0].contains("\u{1B}[1mworld\u{1B}[0m"))
+    }
+
+    func testInlineItalicWrapsWithItalicANSI() {
+        let engine = StreamingMarkdownEngine()
+        let result = engine.render(text: "This is *important* text", isFinal: true)
+        XCTAssertEqual(result.count, 1)
+        XCTAssertTrue(result[0].contains("\u{1B}[3mimportant\u{1B}[0m"))
+    }
+
+    func testCodeSpanTakesPriorityOverBoldInside() {
+        let engine = StreamingMarkdownEngine()
+        let result = engine.render(text: "`**not bold**` outside", isFinal: true)
+        XCTAssertEqual(result.count, 1)
+        // Inside code span, ** should be literal, not bold
+        let line = result[0]
+        XCTAssertTrue(line.contains("\u{1B}[7m**not bold**\u{1B}[0m"))
+        XCTAssertFalse(line.contains("\u{1B}[1m"))
+    }
+
+    // MARK: - Link rendering
+
+    func testBasicLinkRendersWithUnderlineAndURL() {
+        let engine = StreamingMarkdownEngine()
+        let result = engine.render(text: "See [the docs](https://example.com) here", isFinal: true)
+        XCTAssertEqual(result.count, 1)
+        let line = result[0]
+        XCTAssertTrue(line.contains("\u{1B}[4mthe docs\u{1B}[0m"))
+        XCTAssertTrue(line.contains("\u{1B}[2m(https://example.com)\u{1B}[0m"))
+    }
+
+    func testEmptyLinkTextOrURLNotRendered() {
+        let engine = StreamingMarkdownEngine()
+        let result = engine.render(text: "[](). not a link", isFinal: true)
+        // Empty bracket/paren → rendered as literal text, not ANSI formatted
+        XCTAssertFalse(result[0].contains("\u{1B}[4m"))
+    }
+
+    func testLinkInsideCodeSpanNotParsed() {
+        let engine = StreamingMarkdownEngine()
+        let result = engine.render(text: "`[not a link](url)` end", isFinal: true)
+        XCTAssertEqual(result.count, 1)
+        // Inside code span, link syntax is literal
+        XCTAssertTrue(result[0].contains("[not a link](url)"))
+    }
+
+    func testInlineFormattingDoesNotBreakHeadings() {
+        let engine = StreamingMarkdownEngine()
+        let result = engine.render(text: "# Hello **world**", isFinal: true)
+        XCTAssertEqual(result.count, 1)
+        // Heading prefix preserved, bold applied to "world"
+        XCTAssertTrue(result[0].hasPrefix("█ Hello "))
+        XCTAssertTrue(result[0].contains("\u{1B}[1mworld\u{1B}[0m"))
+    }
+
+    // MARK: - Stable prefix cap (C4)
+
+    func testLongStreamingContentDoesNotGrowUnbounded() {
+        let engine = StreamingMarkdownEngine()
+        // Generate content well beyond the 65KB cap
+        let longLine = String(repeating: "abcdefghij", count: 7000) // ~70KB
+        let result = engine.render(text: longLine, isFinal: true)
+        // Should not crash or produce empty output despite internal reset
+        XCTAssertFalse(result.isEmpty)
+        XCTAssertTrue(result.contains(where: { $0.contains("abcdefghij") }))
+    }
 }
 
 @MainActor

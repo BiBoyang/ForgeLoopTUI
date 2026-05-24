@@ -176,6 +176,10 @@ public final class VirtualTerminal: Terminal, @unchecked Sendable {
             if params.first == 2 {
                 clearCurrentLine()
             }
+        case "L":
+            insertLines(params.first ?? 1)
+        case "M":
+            deleteLines(params.first ?? 1)
         case "m":
             currentStyle.apply(params)
         default:
@@ -203,5 +207,30 @@ public final class VirtualTerminal: Terminal, @unchecked Sendable {
         let blankCell = Cell(character: " ", style: SGRState())
         grid.removeFirst()
         grid.append(Array(repeating: blankCell, count: width))
+    }
+
+    /// ESC[<n>L — 在当前光标行插入 n 行空白行。
+    /// 光标行及以下内容下移，超出底部的行丢失。n 默认为 1，超界时 clamp 到剩余高度。
+    private func insertLines(_ n: Int) {
+        let count = max(1, min(n, height - cursorRow))
+        guard count > 0 else { return }
+        let blankCell = Cell(character: " ", style: SGRState())
+        let blankRow = Array(repeating: blankCell, count: width)
+        let keepAbove = Array(grid.prefix(cursorRow))
+        let survivingShifted = Array(grid[cursorRow..<(height - count)])
+        grid = keepAbove + Array(repeating: blankRow, count: count) + survivingShifted
+    }
+
+    /// ESC[<n>M — 删除当前光标行开始的 n 行。
+    /// 下方内容上移，底部以空白行填充。n 默认为 1，超界时 clamp 到剩余高度。
+    private func deleteLines(_ n: Int) {
+        let count = max(1, min(n, height - cursorRow))
+        guard count > 0 else { return }
+        let blankCell = Cell(character: " ", style: SGRState())
+        let blankRow = Array(repeating: blankCell, count: width)
+        let keepAbove = Array(grid.prefix(cursorRow))
+        let shiftUp = Array(grid.dropFirst(cursorRow + count))
+        let padding = Array(repeating: blankRow, count: count)
+        grid = keepAbove + shiftUp + padding
     }
 }

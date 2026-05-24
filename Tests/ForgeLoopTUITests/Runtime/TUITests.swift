@@ -2,15 +2,12 @@ import XCTest
 @testable import ForgeLoopTUI
 
 final class TUITests: XCTestCase {
-    private final class OutputSpy: @unchecked Sendable {
+    private final class DiagnosticCollector: @unchecked Sendable {
         private let lock = NSLock()
-        private var _outputs: [String] = []
-
-        var outputs: [String] { lock.withLock { _outputs } }
-        var last: String? { lock.withLock { _outputs.last } }
-
-        lazy var writer: FrameWriter = { [weak self] text in
-            self?.lock.withLock { self?._outputs.append(text) }
+        private var _events: [TUIRenderDiagnostic] = []
+        var events: [TUIRenderDiagnostic] { lock.withLock { _events } }
+        func append(_ event: TUIRenderDiagnostic) {
+            lock.withLock { _events.append(event) }
         }
     }
 
@@ -211,5 +208,78 @@ final class TUITests: XCTestCase {
         tui.requestRender(lines: ["a", "abcde"])
         XCTAssertTrue(vt.screenLines[0].hasPrefix("a"))
         XCTAssertTrue(vt.screenLines[1].hasPrefix("abcde"))
+    }
+
+    // MARK: - A1: invalidate() 行为测试
+
+    func testInvalidateDoesNotChangeTerminalDimensions() {
+        let tui = TUI(terminalWidth: 80, terminalHeight: 24)
+        let w = tui.terminalWidth
+        let h = tui.terminalHeight
+        tui.invalidate()
+        XCTAssertEqual(tui.terminalWidth, w)
+        XCTAssertEqual(tui.terminalHeight, h)
+    }
+
+    func testInvalidateIsIdempotent() {
+        let tui = TUI(terminalWidth: 80, terminalHeight: 24)
+        // Multiple invalidate calls should not crash or corrupt state
+        tui.invalidate()
+        tui.invalidate()
+        tui.invalidate()
+        // 后续渲染正常（不抛错不崩溃）
+        tui.requestRender(lines: ["hello"])
+        // 二次 invalidate + 渲染
+        tui.invalidate()
+        tui.requestRender(lines: ["world"])
+    }
+
+    func testInvalidateAfterResizeProducesCorrectNextFrame() {
+        let vt = VirtualTerminal(width: 10, height: 5)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, terminalWidth: 10, terminalHeight: 5, terminal: vt)
+
+        // 帧1：width=10
+        tui.requestRender(lines: ["header", "content"])
+        XCTAssertTrue(vt.screenLines[0].hasPrefix("header"))
+        XCTAssertTrue(vt.screenLines[1].hasPrefix("content"))
+
+        // 外部 resize（如窗口变化），不通过 updateTerminalSize 通知 TUI
+        vt.resize(width: 4, height: 5)
+        // 手动让 TUI 感知新尺寸 + 标记失效
+        tui.updateTerminalSize(width: 4)
+        tui.invalidate()
+
+        // 帧2：内容不变，diff 应基于新重算的物理行缓存正确渲染
+        tui.requestRender(lines: ["new"])
+        // 验证渲染输出不含残留的旧行（stale rows from old cache）
+        // "header" 和 "content" 已被清除，"new" 是唯一条目
+        XCTAssertTrue(vt.screenLines[0].hasPrefix("new"))
+        // row 1 应为空（被 ESC[2K 清除）
+        XCTAssertTrue(vt.screenLines[1].allSatisfy { $0 == " " })
+    }
+
+    // MARK: - C5: diagnostics handler
+
+    func testDiagnosticsHandlerReceivesEvents() {
+        let collector = DiagnosticCollector()
+        let tui = TUI(isTTY: true, terminalHeight: 3)
+        tui.diagnosticsHandler = { [weak collector] event in
+            collector?.append(event)
+        }
+
+        // First render — exceeds height=3 with default width=80, triggers full redraw
+        tui.requestRender(lines: ["line1", "line2", "line3", "line4"])
+
+        let events = collector.events
+        XCTAssertFalse(events.isEmpty, "Should emit at least one diagnostic")
+        let hasFullRedraw = events.contains(where: {
+            if case .fullRedraw = $0 { return true }; return false
+        })
+        XCTAssertTrue(hasFullRedraw, "Frame exceeding terminal height should trigger fullRedraw")
+    }
+
+    func testDiagnosticsHandlerDefaultIsNil() {
+        let tui = TUI()
+        XCTAssertNil(tui.diagnosticsHandler)
     }
 }

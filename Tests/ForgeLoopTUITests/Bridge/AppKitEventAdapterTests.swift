@@ -111,10 +111,37 @@ struct AppKitEventAdapterTests {
         #expect(adapter.keyEvent(from: ctrlDown) == KeyEvent(key: .down, modifiers: .ctrl))
     }
 
-    @Test("command key returns nil")
+    @Test("command key maps to .command modifier")
     func testCommandKeyReturnsNil() {
+        // Cmd+C now produces a KeyEvent with .command modifier (was nil before .command was added)
         let event = makeEvent(modifierFlags: .command, characters: "c")
-        #expect(adapter.keyEvent(from: event) == nil)
+        #expect(adapter.keyEvent(from: event) == KeyEvent(key: .character("c"), modifiers: .command))
+    }
+
+    @Test("Cmd+Enter produces enter with command modifier")
+    func testCmdEnter() {
+        let event = makeEvent(modifierFlags: .command, specialKey: .carriageReturn)
+        #expect(adapter.keyEvent(from: event) == KeyEvent(key: .enter, modifiers: .command))
+    }
+
+    @Test("Cmd+K produces character k with command modifier")
+    func testCmdK() {
+        let event = makeEvent(modifierFlags: .command, characters: "k")
+        #expect(adapter.keyEvent(from: event) == KeyEvent(key: .character("k"), modifiers: .command))
+    }
+
+    @Test("Modifiers.command rawValue does not conflict with shift/alt/ctrl")
+    func testCommandModifierRawValueNoConflict() {
+        // Bits must not overlap
+        #expect(Modifiers.command.rawValue & Modifiers.shift.rawValue == 0)
+        #expect(Modifiers.command.rawValue & Modifiers.alt.rawValue == 0)
+        #expect(Modifiers.command.rawValue & Modifiers.ctrl.rawValue == 0)
+        // command + shift + ctrl combination has distinct bits
+        let combo: Modifiers = [.command, .shift, .ctrl]
+        #expect(combo.contains(.command))
+        #expect(combo.contains(.shift))
+        #expect(combo.contains(.ctrl))
+        #expect(!combo.contains(.alt))
     }
 
     // MARK: - Boundaries and degradation
@@ -291,6 +318,7 @@ struct AppKitEventAdapterTests {
         if modifiers.contains(.shift) { flags.insert(.shift) }
         if modifiers.contains(.alt) { flags.insert(.option) }
         if modifiers.contains(.ctrl) { flags.insert(.control) }
+        if modifiers.contains(.command) { flags.insert(.command) }
         return flags
     }
 }

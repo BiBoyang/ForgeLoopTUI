@@ -5,19 +5,7 @@ import Testing
 @Suite("Input-Layout Linkage Boundary")
 struct InputLayoutReplayTests {
 
-    private final class OutputSpy: @unchecked Sendable {
-        private let lock = NSLock()
-        private var _outputs: [String] = []
-
-        var outputs: [String] { lock.withLock { _outputs } }
-        var last: String? { lock.withLock { _outputs.last } }
-
-        lazy var writer: FrameWriter = { [weak self] text in
-            self?.lock.withLock { self?._outputs.append(text) }
-        }
-    }
-
-    // MARK: - 核心 replay：输入变化 + 布局变化（committed/live 分界 + cursor）
+// MARK: - 核心 replay：输入变化 + 布局变化（committed/live 分界 + cursor）
 
     /// 模拟完整交互序列：初始输入 → 连续打字 → 提交到历史 → 追加 committed → cursor 变化
     ///

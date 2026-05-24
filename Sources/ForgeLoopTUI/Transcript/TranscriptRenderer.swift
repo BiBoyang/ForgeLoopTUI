@@ -1,14 +1,39 @@
 import Foundation
 
+/// 控制 TranscriptRenderer 摘要截断与通知上限的配置。
+public struct TranscriptRenderOptions: Sendable, Equatable {
+    public var maxSummaryChars: Int
+    public var maxSummaryLines: Int
+    public var maxNotificationLines: Int
+
+    public static let `default` = TranscriptRenderOptions(
+        maxSummaryChars: 120,
+        maxSummaryLines: 3,
+        maxNotificationLines: 3
+    )
+
+    public init(
+        maxSummaryChars: Int = 120,
+        maxSummaryLines: Int = 3,
+        maxNotificationLines: Int = 3
+    ) {
+        self.maxSummaryChars = max(1, maxSummaryChars)
+        self.maxSummaryLines = max(1, maxSummaryLines)
+        self.maxNotificationLines = max(1, maxNotificationLines)
+    }
+}
+
 @MainActor
 public final class TranscriptRenderer {
     let lines: TranscriptBuffer
     private var streamingRange: Range<Int>?
     private var completedRange: Range<Int>?
+    private var thinkingRange: Range<Int>?
     /// 按开始顺序（slot 顺序）存储的 pending tool。
     private var pendingTools: [(id: String, lineIndex: Int)] = []
     private var notificationLines: [Int] = []
     private let markdownEngine: MarkdownEngine
+    private let options: TranscriptRenderOptions
 
     public var pendingToolCount: Int { pendingTools.count }
     public var slotOrderedToolIDs: [String] { pendingTools.map { $0.id } }
@@ -16,13 +41,13 @@ public final class TranscriptRenderer {
     public var lastCompletedAssistantRange: Range<Int>? { completedRange }
     public var preferredPinnedRange: Range<Int>? { streamingRange ?? completedRange }
 
-    private let maxSummaryChars = 120
-    private let maxSummaryLines = 3
-    private let maxNotificationLines = 3
-
-    public init(markdownEngine: MarkdownEngine = StreamingMarkdownEngine()) {
+    public init(
+        markdownEngine: MarkdownEngine = StreamingMarkdownEngine(),
+        options: TranscriptRenderOptions = .default
+    ) {
         self.lines = TranscriptBuffer()
         self.markdownEngine = markdownEngine
+        self.options = options
     }
 
     public convenience init(markdownOptions: MarkdownRenderOptions) {
@@ -62,6 +87,31 @@ public final class TranscriptRenderer {
                 }
             }
 
+        case .blockCancel:
+            // 丢弃进行中的流式内容，仅保留取消标记，清理所有 streaming 状态。
+            replaceStreaming(with: ["[cancelled]"])
+            streamingRange = nil
+            completedRange = nil
+            markdownEngine.reset()
+            append("")
+
+        case .thinking(let content, let isFinal):
+            let thinkingLines = content.isEmpty
+                ? []
+                : content.split(separator: "\n", omittingEmptySubsequences: false).map { "💭 \($0)" }
+            if let range = thinkingRange {
+                lines.replace(range: range, with: thinkingLines)
+                thinkingRange = range.lowerBound..<(range.lowerBound + thinkingLines.count)
+            } else {
+                let start = lines.count
+                lines.append(contentsOf: thinkingLines)
+                thinkingRange = start..<(start + thinkingLines.count)
+            }
+            if isFinal {
+                thinkingRange = nil
+                append("")
+            }
+
         case .operationStart(let id, let header, let status):
             guard !pendingTools.contains(where: { $0.id == id }) else { break }
             append(header)
@@ -95,15 +145,15 @@ public final class TranscriptRenderer {
         guard let text, !text.isEmpty else { return [] }
 
         let allLines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        var previewLines = Array(allLines.prefix(maxSummaryLines))
+        var previewLines = Array(allLines.prefix(options.maxSummaryLines))
 
-        if allLines.count > maxSummaryLines {
+        if allLines.count > options.maxSummaryLines {
             previewLines.append("...")
         }
 
         return previewLines.map { line in
-            if line.count > maxSummaryChars {
-                let endIndex = line.index(line.startIndex, offsetBy: maxSummaryChars)
+            if line.count > options.maxSummaryChars {
+                let endIndex = line.index(line.startIndex, offsetBy: options.maxSummaryChars)
                 return String(line[..<endIndex]) + "..."
             }
             return line
@@ -114,7 +164,7 @@ public final class TranscriptRenderer {
         lines.append(line)
         notificationLines.append(lines.count - 1)
 
-        while notificationLines.count > maxNotificationLines {
+        while notificationLines.count > options.maxNotificationLines {
             let oldIndex = notificationLines.removeFirst()
             lines.replace(range: oldIndex..<(oldIndex + 1), with: [])
             shiftIndices(after: oldIndex - 1, by: -1)
@@ -141,6 +191,11 @@ public final class TranscriptRenderer {
             let newLower = range.lowerBound > threshold ? range.lowerBound + delta : range.lowerBound
             let newUpper = range.upperBound > threshold ? range.upperBound + delta : range.upperBound
             completedRange = newLower..<newUpper
+        }
+        if let range = thinkingRange {
+            let newLower = range.lowerBound > threshold ? range.lowerBound + delta : range.lowerBound
+            let newUpper = range.upperBound > threshold ? range.upperBound + delta : range.upperBound
+            thinkingRange = newLower..<newUpper
         }
     }
 
@@ -187,6 +242,10 @@ final class TranscriptBuffer {
 
     func append(_ line: String) {
         all.append(line)
+    }
+
+    func append(contentsOf lines: [String]) {
+        all.append(contentsOf: lines)
     }
 
     func replace(range: Range<Int>, with lines: [String]) {
