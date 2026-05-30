@@ -9,7 +9,7 @@ public protocol InputClock: Sendable {
 }
 
 /// 基于 `DispatchTime` 的系统时钟。
-public struct SystemInputClock: InputClock {
+struct SystemInputClock: InputClock {
     public init() {}
     public func now() -> UInt64 {
         DispatchTime.now().uptimeNanoseconds

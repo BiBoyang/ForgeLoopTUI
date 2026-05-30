@@ -1,11 +1,34 @@
 # ForgeLoopTUI
 
-[![Release](https://img.shields.io/github/v/release/BiBoyang/ForgeLoopTUI?display_name=tag)](https://github.com/BiBoyang/ForgeLoopTUI/releases)
+[![Release](https://img.shields.io/badge/Release-latest-blue)](./CHANGELOG.md)
 [![Swift](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
 [![Platform](https://img.shields.io/badge/macOS-14%2B-blue.svg)](https://www.apple.com/macos)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/BiBoyang/ForgeLoopTUI/blob/main/LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 `ForgeLoopTUI` is a lightweight Swift terminal UI library for streaming AI transcripts.
+
+> [!TIP]
+> For a quick smoke test, clone the repo and run `swift run` inside
+> `Examples/MinimalStreamingDemo/`.
+
+```
+┌─ Chat Session ────────────────────────────────────────────┐
+│ ❯ What is ForgeLoopTUI?                                   │
+│                                                           │
+│ ForgeLoopTUI is a Swift terminal UI library built for     │
+│ streaming AI transcripts. It handles:                     │
+│                                                           │
+│   • Diff-based inline rendering                           │
+│   • Streaming Markdown with tables                        │
+│   • Tool execution placeholders                           │
+│   • CJK / emoji safe cursor positioning                   │
+│                                                           │
+│ ● read({"path":"README.md"})                              │
+│ ⎿ done: # ForgeLoopTUI...                                 │
+│                                                           │
+│ ❯ _                                                       │
+└───────────────────────────────────────────────────────────┘
+```
 
 It provides:
 - event-driven transcript rendering
@@ -28,6 +51,21 @@ It provides:
 - **viewport budget clipping** (`LayoutBudget`) with physical-row-aware tail retention and optional overflow markers
 - `Terminal` protocol with `StdoutTerminal` and `VirtualTerminal` for testable, decoupled output
 
+## Contents
+
+- [Requirements](#requirements)
+- [Install (SwiftPM)](#install-swiftpm)
+- [Quick Start](#quick-start)
+- [Rendering Modes](#rendering-modes)
+- [Interaction Primitives](#interaction-primitives)
+- [Customizing Wide Tables](#customizing-wide-tables)
+- [Stability & SemVer](#stability--semver)
+- [Roadmap and Architecture Docs](#roadmap-and-architecture-docs)
+- [Event Model](#event-model)
+- [Development](#development)
+- [Examples](#examples)
+- [Related Projects](#related-projects)
+
 ## Requirements
 
 - Swift 6
@@ -37,7 +75,8 @@ It provides:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/BiBoyang/ForgeLoopTUI.git", from: "1.0.0")
+    // Replace <OWNER> with the GitHub account or organization that hosts this repo.
+    .package(url: "https://github.com/<OWNER>/ForgeLoopTUI.git", from: "1.0.0")
 ],
 targets: [
     .target(
@@ -324,7 +363,7 @@ It now ships with a default showcase fixture, a dedicated table edge-case fixtur
 
 ## Related Projects
 
-- `ForgeLoop` (main coding-agent application): https://github.com/BiBoyang/ForgeLoop
+- `ForgeLoop` (main coding-agent application): https://github.com/<OWNER>/ForgeLoop
 
 ## Suggested GitHub Topics
 

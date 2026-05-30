@@ -40,11 +40,11 @@ public final class KeyResolver<Action: Sendable> {
 
     public init(
         registry: KeybindingRegistry<Action>,
-        clock: InputClock = SystemInputClock(),
+        clock: (any InputClock)? = nil,
         timeoutNanoseconds: UInt64? = nil
     ) {
         self.registry = registry
-        self.clock = clock
+        self.clock = clock ?? SystemInputClock()
         self.timeout = timeoutNanoseconds ?? Self.defaultTimeoutNanoseconds
     }
 

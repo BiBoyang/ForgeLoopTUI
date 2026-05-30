@@ -2,6 +2,8 @@
 
 This document describes the recommended testing workflow for `ForgeLoopTUI`.
 
+All commands assume you are in the repository root directory.
+
 ## Goals
 
 `ForgeLoopTUI` is a terminal UI library, so testing should cover four things:
@@ -16,7 +18,6 @@ This document describes the recommended testing workflow for `ForgeLoopTUI`.
 Run the full package test suite from the repository root:
 
 ```bash
-cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI
 swift test
 ```
 
@@ -37,7 +38,6 @@ Use when changing:
 Commands:
 
 ```bash
-cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI
 swift test --filter TUITests
 swift test --filter CommittedLiveRenderTests
 ```
@@ -62,7 +62,6 @@ Use when changing:
 Command:
 
 ```bash
-cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI
 swift test --filter StyleTests
 ```
 
@@ -81,7 +80,6 @@ Use when changing:
 Command:
 
 ```bash
-cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI
 swift test --filter TextInputTests
 ```
 
@@ -101,7 +99,6 @@ Use when changing:
 Command:
 
 ```bash
-cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI
 swift test --filter ModalTests
 ```
 
@@ -121,7 +118,6 @@ Use when changing:
 Commands:
 
 ```bash
-cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI
 swift test --filter TranscriptRendererTests
 swift test --filter TranscriptRendererToolResultTests
 ```
@@ -145,7 +141,6 @@ Use when changing:
 Command:
 
 ```bash
-cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI
 swift test --filter StreamingTranscriptAppendStateTests
 ```
 
@@ -163,14 +158,16 @@ This verifies:
 Run the stability/smoke example:
 
 ```bash
-cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI/Examples/MinimalStreamingDemo
+# Run from the repository root
+cd Examples/MinimalStreamingDemo
 swift run
 ```
 
 Run the example with a specific fixture:
 
 ```bash
-cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI/Examples/MinimalStreamingDemo
+# Run from the repository root
+cd Examples/MinimalStreamingDemo
 swift run MinimalStreamingDemo ../Fixtures/markdownview-sample.md
 ```
 
@@ -196,42 +193,48 @@ Presentation checks should be separate from the public-API smoke gate.
 Run the Markdown-focused example:
 
 ```bash
-cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI/Examples/MarkdownShowcase
+# Run from the repository root
+cd Examples/MarkdownShowcase
 swift run
 ```
 
 Run the bundled edge-case fixture:
 
 ```bash
-cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI/Examples/MarkdownShowcase
+# Run from the repository root
+cd Examples/MarkdownShowcase
 swift run MarkdownShowcase edge-cases
 ```
 
 Run the long mixed-structure fixture:
 
 ```bash
-cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI/Examples/MarkdownShowcase
+# Run from the repository root
+cd Examples/MarkdownShowcase
 swift run MarkdownShowcase long-mixed
 ```
 
 Run the narrow-terminal stress fixture:
 
 ```bash
-cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI/Examples/MarkdownShowcase
+# Run from the repository root
+cd Examples/MarkdownShowcase
 swift run MarkdownShowcase narrow-terminal
 ```
 
 Run all bundled fixtures in a single pass:
 
 ```bash
-cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI/Examples/MarkdownShowcase
+# Run from the repository root
+cd Examples/MarkdownShowcase
 swift run MarkdownShowcase --all
 ```
 
 Run it with a specific fixture:
 
 ```bash
-cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI/Examples/MarkdownShowcase
+# Run from the repository root
+cd Examples/MarkdownShowcase
 swift run MarkdownShowcase ../Fixtures/markdownview-sample.md
 ```
 
@@ -276,7 +279,6 @@ Use the long transcript fixture at:
 You can inspect it directly with:
 
 ```bash
-cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI
 sed -n '1,160p' Examples/Fixtures/long-transcript.md
 ```
 
@@ -294,14 +296,12 @@ You can also copy external Markdown samples into `Examples/Fixtures/` and run th
 ### Routine changes
 
 ```bash
-cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI
 swift test
 ```
 
 ### Rendering changes
 
 ```bash
-cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI
 swift test --filter TUITests
 cd Examples/MinimalStreamingDemo
 swift run
@@ -312,7 +312,6 @@ swift run
 ### Streaming planner changes
 
 ```bash
-cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI
 swift test --filter StreamingTranscriptAppendStateTests
 cd Examples/MinimalStreamingDemo
 swift run
@@ -321,7 +320,6 @@ swift run
 ### Markdown presentation changes
 
 ```bash
-cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI
 swift test
 cd Examples/MarkdownShowcase
 swift run
@@ -330,7 +328,6 @@ swift run
 ### Release candidate check
 
 ```bash
-cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI
 swift test
 cd Examples/MinimalStreamingDemo
 swift run
@@ -347,7 +344,6 @@ After M7, release confidence depends on both repositories (`ForgeLoopTUI` and
 `ForgeLoop`). Run the cross-repo gate from `ForgeLoopTUI`:
 
 ```bash
-cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI
 ./Scripts/cross-repo-gate.sh --quick
 ```
 
@@ -356,7 +352,6 @@ Use `--quick` for routine slices (build + key integration/smoke checks).
 For pre-release rehearsal, use:
 
 ```bash
-cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI
 ./Scripts/cross-repo-gate.sh --full
 ```
 

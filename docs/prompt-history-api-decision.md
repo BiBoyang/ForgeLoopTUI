@@ -81,5 +81,4 @@ After `1.0.0`, `PromptHistory` is expected to graduate to **Stable** if no signi
 
 - `docs/public-api-surface.md` — Per-type stability assignment
 - `docs/semver-and-api-stability.md` — SemVer policy and evolution rules
-- `docs/post-m7-maintenance-protocol.md` — Boundary enforcement
 - `docs/migration-guide-for-forgeloopcli.md` — Migration record (InputHistory → PromptHistory)

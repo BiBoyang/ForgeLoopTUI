@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 Format and section names follow `docs/semver-and-api-stability.md` (§7).
 
+## [Unreleased]
+
+### Added
+- `Modifiers.command` bit and AppKit event-adapter mapping.
+- `TranscriptRenderOptions` for configurable summary and notification limits.
+- `CoreRenderEvent.blockCancel` for mid-stream cancellation.
+- `CoreRenderEvent.thinking` for reasoning/thinking content.
+- Inline Markdown rendering: code spans, bold, italic, and links.
+- `TUI.diagnosticsHandler` for render decision observability.
+- `CONTRIBUTING.md`, README table of contents.
+
+### Fixed
+- `TUI.invalidate()` no longer empty — recalculates physical row caches inside lock.
+- `VirtualTerminal` supports CSI `L`/`M` (insert/delete lines) for fast-path test parity.
+- `TranscriptRenderOptions` clamps negative values to avoid crashes.
+- `LiveBudgetPlanner` adds explicit invariant assert.
+
+### Changed
+- Extracted shared `scalarIsWide()` to eliminate 100-line Unicode range duplication.
+- Removed hardcoded API key fallback from DeepSeekChat example.
+- Removed internal working docs from public `docs/`.
+- `StreamingMarkdownEngine` stable prefix capped at 64 KB to bound memory in long sessions.
+- `.gitignore` expanded for Xcode/IDE artifacts.
+- `TESTING.md` uses repo-root-relative paths.
+
 ## [1.0.0] — 2026-05-23
 
 ### Added

@@ -22,11 +22,6 @@ let package = Package(
             dependencies: ["ForgeLoopTUI"],
             path: "Tests/ForgeLoopTUITests"
         ),
-        .executableTarget(
-            name: "ForgeLoopTUIDemo",
-            dependencies: ["ForgeLoopTUI"],
-            path: "Demo/ForgeLoopTUIDemo"
-        ),
     ],
     swiftLanguageModes: [.v6]
 )

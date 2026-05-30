@@ -78,7 +78,7 @@ public enum ComponentBuilder {
 }
 
 /// Zero-height component used for `buildOptional` fallback.
-public struct EmptyComponent: Component {
+struct EmptyComponent: Component {
     public init() {}
     public func render(width: Int) -> [String] { [] }
 }

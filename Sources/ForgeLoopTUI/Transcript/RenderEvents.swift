@@ -25,7 +25,7 @@ public enum RenderEvent: Sendable, Equatable {
 ///
 /// 保留用于向后兼容；新项目应直接使用 `CoreRenderEvent`。
 @available(*, deprecated, message: "Use CoreRenderEvent directly")
-public struct LegacyRenderEventAdapter {
+struct LegacyRenderEventAdapter {
     private static let blockId = "__legacy_block"
 
     public static func adapt(_ event: RenderEvent, capability: TerminalCapability = .truecolor) -> CoreRenderEvent {

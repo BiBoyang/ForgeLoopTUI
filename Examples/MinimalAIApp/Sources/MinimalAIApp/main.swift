@@ -107,7 +107,17 @@ final class MinimalAIApp: @unchecked Sendable {
     private let exitFlag = ExitFlag()
     private let resolver: KeyResolver<AppCommand>
 
-    init(provider: MinimalAIProvider = FauxAIProvider()) {
+    init(provider: MinimalAIProvider? = nil) {
+        let resolvedProvider: MinimalAIProvider
+        if let provider = provider {
+            resolvedProvider = provider
+        } else if let envKey = ProcessInfo.processInfo.environment["DEEPSEEK_API_KEY"], !envKey.isEmpty {
+            resolvedProvider = DeepSeekProvider(apiKey: envKey)
+        } else {
+            // Default to local faux provider when no API key is provided.
+            resolvedProvider = FauxAIProvider()
+        }
+
         let isInteractive = isatty(STDIN_FILENO) == 1 && isatty(STDOUT_FILENO) == 1
         // Use the new physical-rows live budget so that long / wrapped streaming
         // input is settled into committed instead of being silently clipped.
@@ -123,7 +133,7 @@ final class MinimalAIApp: @unchecked Sendable {
             liveBudgetMode: .physicalRows,
             cursorPositioningMode: .marker
         )
-        self.provider = provider
+        self.provider = resolvedProvider
         self.transcript = TranscriptRenderer()
         self.resolver = KeyResolver(registry: MinimalAIApp.defaultKeybindings())
     }
@@ -439,8 +449,8 @@ final class MinimalAIApp: @unchecked Sendable {
 
 // MARK: - Entry Point
 
-@main
 struct Entry {
+    @MainActor
     static func main() {
         let app = MinimalAIApp()
         let isInteractive = isatty(STDIN_FILENO) == 1 && isatty(STDOUT_FILENO) == 1
@@ -457,3 +467,5 @@ struct Entry {
         }
     }
 }
+
+Entry.main()

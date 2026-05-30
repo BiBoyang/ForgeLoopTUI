@@ -2,3 +2,10 @@
 .swiftpm/
 Package.resolved
 .DS_Store
+DerivedData/
+xcuserdata/
+*.xcuserstate
+.vscode/
+.idea/
+
+notes/

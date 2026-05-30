@@ -18,23 +18,23 @@ Policy: `docs/semver-and-api-stability.md`
 
 Run every command. All must pass.
 
-- [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && swift build`
-- [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && swift test`
-- [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && swift test --filter ScreenLayoutRendererTests`
-- [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && swift test --filter ComponentTests`
-- [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && swift test --filter LayoutBudgetTests`
-- [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && swift test --filter CommittedLiveRenderTests`
-- [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && swift test --filter TUITests`
-- [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && swift test --filter InputPipelineTests`
-- [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && swift test --filter KeyParserTests`
-- [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && swift test --filter ANSIParserTests`
-- [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && swift test --filter VirtualTerminalTests`
-- [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && swift test --filter HybridRenderAdapterTests`
-- [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && swift test --filter CapabilityEndToEndTests`
-- [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && swift test --filter PublicAPISmokeTests`
-- [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoop && swift build`
-- [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoop && swift test --filter ScreenLayoutIntegrationTests`
-- [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && ./Scripts/cross-repo-gate.sh --quick`
+- [ ] `swift build`
+- [ ] `swift test`
+- [ ] `swift test --filter ScreenLayoutRendererTests`
+- [ ] `swift test --filter ComponentTests`
+- [ ] `swift test --filter LayoutBudgetTests`
+- [ ] `swift test --filter CommittedLiveRenderTests`
+- [ ] `swift test --filter TUITests`
+- [ ] `swift test --filter InputPipelineTests`
+- [ ] `swift test --filter KeyParserTests`
+- [ ] `swift test --filter ANSIParserTests`
+- [ ] `swift test --filter VirtualTerminalTests`
+- [ ] `swift test --filter HybridRenderAdapterTests`
+- [ ] `swift test --filter CapabilityEndToEndTests`
+- [ ] `swift test --filter PublicAPISmokeTests`
+- [ ] In sibling `ForgeLoop` repo: `swift build`
+- [ ] In sibling `ForgeLoop` repo: `swift test --filter ScreenLayoutIntegrationTests`
+- [ ] `./Scripts/cross-repo-gate.sh --quick`
 
 ---
 
@@ -46,7 +46,7 @@ Run every command. All must pass.
 - [ ] `docs/migration-guide-for-forgeloopcli.md` has no stale "pending" items that are now done.
 - [ ] `docs/public-api-surface.md` lists every new `public` type added since the last release.
 - [ ] `docs/semver-and-api-stability.md` has no contradictions with the actual API surface.
-- [ ] `todo.md` reflects the current focus.
+- [ ] `CHANGELOG.md` `[Unreleased]` reflects the current focus.
 
 ---
 
@@ -64,13 +64,13 @@ Run every command. All must pass.
 
 ## 4. Performance / regression gate
 
-- [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoop && swift test --filter PerformanceBaselineTests`
-- [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoop && swift test --filter PerformanceGateTests`
-- [ ] `cd /Users/boyang/Desktop/WebKit_build/ForgeLoopTUI && ./Scripts/cross-repo-gate.sh --full`
+- [ ] In sibling `ForgeLoop` repo: `swift test --filter PerformanceBaselineTests`
+- [ ] In sibling `ForgeLoop` repo: `swift test --filter PerformanceGateTests`
+- [ ] `./Scripts/cross-repo-gate.sh --full`
 - [ ] Compare p50 results against the last baseline snapshot in `ForgeLoop/docs/perf-baseline-snapshots.md`.
 - [ ] If any p50 regresses `>10%`:
   - **必须阻塞发布**，或
-  - **给出已批准的例外记录**：linked issue + time-box + rollback plan + maintainer 书面批准（见 `docs/post-m7-maintenance-protocol.md` §7.3）。
+  - **给出已批准的例外记录**：linked issue + time-box + rollback plan + maintainer 书面批准（记录在 issue 与 release notes 中）。
   - 禁止通过放宽阈值来“放过”回归。
 - [ ] 若存在 `>5%` 且 `<=10%` 的 warn 级退化，在 release notes 中说明原因并知会 maintainer。
 - [ ] 附上前一次 `--full` 演练报告（`docs/pre-release-drill-YYYY-MM-DD.md`），或本次 RC 新产出的报告。报告必须包含：gate 结果汇总、风险分级、发布决策（go/no-go）。

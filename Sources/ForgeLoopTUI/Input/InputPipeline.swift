@@ -25,10 +25,10 @@ public final class InputPipeline: @unchecked Sendable {
     private var pasteAccumulator = ""
 
     public init(
-        clock: any InputClock = SystemInputClock(),
+        clock: (any InputClock)? = nil,
         escapeTimeoutNanoseconds: UInt64 = 50_000_000
     ) {
-        self.clock = clock
+        self.clock = clock ?? SystemInputClock()
         self.escapeTimeoutNanoseconds = escapeTimeoutNanoseconds
     }
 
