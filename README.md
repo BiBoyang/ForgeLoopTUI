@@ -1,6 +1,6 @@
 # ForgeLoopTUI
 
-[![Release](https://img.shields.io/badge/Release-latest-blue)](./CHANGELOG.md)
+[![Release](https://img.shields.io/github/v/release/BiBoyang/ForgeLoopTUI?display_name=tag)](https://github.com/BiBoyang/ForgeLoopTUI/releases)
 [![Swift](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
 [![Platform](https://img.shields.io/badge/macOS-14%2B-blue.svg)](https://www.apple.com/macos)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
@@ -75,8 +75,7 @@ It provides:
 
 ```swift
 dependencies: [
-    // Replace <OWNER> with the GitHub account or organization that hosts this repo.
-    .package(url: "https://github.com/<OWNER>/ForgeLoopTUI.git", from: "1.0.0")
+    .package(url: "https://github.com/BiBoyang/ForgeLoopTUI.git", from: "1.0.0")
 ],
 targets: [
     .target(
@@ -363,7 +362,7 @@ It now ships with a default showcase fixture, a dedicated table edge-case fixtur
 
 ## Related Projects
 
-- `ForgeLoop` (main coding-agent application): https://github.com/<OWNER>/ForgeLoop
+- `ForgeLoop` (main coding-agent application): https://github.com/BiBoyang/ForgeLoop
 
 ## Suggested GitHub Topics
 

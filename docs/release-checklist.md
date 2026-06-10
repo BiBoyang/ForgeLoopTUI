@@ -73,7 +73,7 @@ Run every command. All must pass.
   - **给出已批准的例外记录**：linked issue + time-box + rollback plan + maintainer 书面批准（记录在 issue 与 release notes 中）。
   - 禁止通过放宽阈值来“放过”回归。
 - [ ] 若存在 `>5%` 且 `<=10%` 的 warn 级退化，在 release notes 中说明原因并知会 maintainer。
-- [ ] 附上前一次 `--full` 演练报告（`docs/pre-release-drill-YYYY-MM-DD.md`），或本次 RC 新产出的报告。报告必须包含：gate 结果汇总、风险分级、发布决策（go/no-go）。
+- [ ] 附上前一次 `--full` 演练报告，或复制 `docs/pre-release-drill-template.md` 生成本次 RC 的 `docs/pre-release-drill-YYYY-MM-DD.md`。报告必须包含：gate 结果汇总、风险分级、发布决策（go/no-go）。
 
 ---
 
