@@ -6,6 +6,8 @@ Format and section names follow `docs/semver-and-api-stability.md` (§7).
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-06-13
+
 ### Added
 - `Modifiers.command` bit and AppKit event-adapter mapping.
 - `TranscriptRenderOptions` for configurable summary and notification limits.

@@ -1,7 +1,7 @@
 # Performance Baseline
 
 Date: 2026-05-13  
-Version: 1.0.0 (post Step 6 API stabilisation)
+Version: 1.1.0
 
 This document records performance baselines for the hot paths that ship with
 ForgeLoopTUI's stable API surface. Numbers here are gates, not targets; the

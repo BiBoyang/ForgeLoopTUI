@@ -1,7 +1,7 @@
 # ForgeLoopTUI Public API Surface
 
 Date: 2026-05-23  
-Version: 1.0.0  
+Version: 1.1.0  
 Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party consumer may depend on.
 
 ---
@@ -24,6 +24,7 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 | `TUI.cursorPositioningMode` | `CursorPositioningMode` | **Stable** | Low | Selects hardware cursor positioning strategy (`.relative` default; `.marker` recommended when accurate hardware position matters, e.g. IME candidate windows) |
 | `LiveBudgetMode` | `enum` | **Stable** | Low | `.logicalLines` / `.physicalRows`; shared with `FrameComposer` settlement |
 | `CursorPositioningMode` | `enum` | **Stable** | Low | `.relative` (back-compat) / `.marker` (physical-row aware, CHA-based) |
+| `TUIRenderDiagnostic` | `enum` | **Provisional** | Low | Diagnostic events emitted via `TUI.diagnosticsHandler`; shape may expand with new cases |
 | `RenderLoop` | `class` | **Stable** | Low | Scheduler internals may evolve; public API (`.submit`) is frozen |
 | `RenderLoop.Priority` | `enum` | **Stable** | Very low | `.normal` / `.immediate` only |
 | `RenderStrategy` | `enum` | **Stable** | Low | `.legacyAbsolute` / `.inlineAnchor` unlikely to change |
@@ -95,6 +96,7 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 | `CursorPlacement` | `struct` | **Stable** | Very low | 2D cursor anchor (`up` rows, `offset` columns) |
 | `MultiLineInputRenderResult` | `struct` | **Stable** | Low | `.lines` + `.cursor` (CursorPlacement) |
 | `ListPickerState` | `struct` | **Stable** | Low | Selection state machine |
+| `ListPickerItem` | `struct` | **Stable** | Low | `id` + `title` + optional `subtitle` |
 | `ListPickerAction` | `enum` | **Stable** | Low | `.moveUp`, `.moveDown`, `.confirm`, `.cancel` |
 | `ListPickerOutcome` | `enum` | **Stable** | Low | `.confirmed`, `.cancelled`, `.none` |
 | `ListPickerRenderer` | `struct` | **Stable** | Low | `render(state:)` → `[String]` |
@@ -119,7 +121,7 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 |------|------|-----------|----------------------|------------------|
 | `KeyEvent` | `struct` | **Stable** | Low | Normalized key event model |
 | `Key` | `enum` | **Stable** | Low | Key types (character, arrows, f-keys, etc.); now conforms to `Hashable` |
-| `Modifiers` | `struct` | **Stable** | Low | OptionSet for shift/alt/ctrl; now conforms to `Hashable` |
+| `Modifiers` | `struct` | **Stable** | Low | OptionSet for shift/alt/ctrl/command; now conforms to `Hashable`; `.command` added in v1.1.0 |
 | `KeyStroke` | `struct` | **Stable** | Low | Single-press normalized key for binding lookups; the public initializer traps on `Key.paste` (use `init?(event:)` when converting `KeyEvent`s) |
 | `KeySequence` | `struct` | **Stable** | Low | One or more `KeyStroke`s describing a binding (single key or chord) |
 | `KeyBinding` | `struct` | **Stable** | Low | `KeySequence` → caller-defined action |
@@ -153,8 +155,9 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 
 | Type | Kind | Stability | Breaking-change risk | Migration advice |
 |------|------|-----------|----------------------|------------------|
-| `CoreRenderEvent` | `enum` | **Stable** | Low | Generic event vocabulary; new cases may be added safely |
+| `CoreRenderEvent` | `enum` | **Stable** | Low | Generic event vocabulary; new cases may be added safely; added `.blockCancel` and `.thinking` in v1.1.0 |
 | `TranscriptRenderer` | `class` | **Stable** | Low | `applyCore(_:)` + `transcriptLines` are the contract |
+| `TranscriptRenderOptions` | `struct` | **Stable** | Low | Configurable summary/notification limits; v1.1.0 |
 | `StreamingTranscriptAppendState` | `struct` | **Stable** | Low | Delta computation for append-only streaming |
 | `RenderMessage` | `enum` | **Deprecated** | N/A | Use `CoreRenderEvent` via `LegacyRenderEventAdapter` |
 | `RenderEvent` | `enum` | **Deprecated** | N/A | Use `CoreRenderEvent` instead |
@@ -180,6 +183,7 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 | `AppKitEventAdapter` | `struct` | **Provisional** | Low | NSEvent → KeyEvent adapter; for use in NSView.keyDown(with:) |
 | `HybridObservableState` | `class` | **Provisional** | Low | `@Observable` + `@MainActor` wrapper; requires macOS 14+; UI state container, not cross-thread Sendable |
 | `PanelMetadataProviding` | `protocol` | **Provisional** | Low | Implement on app-side panel data; bridge to `PanelMeta` via `PanelMeta(_:)` init |
+| `AppKitBridgeError` | `enum` | **Provisional** | Medium | `AppKitEventAdapter` mapping failures; currently one case |
 
 **Consumer dependency points:**
 - `HybridRenderAdapter.renderBoth(state:config:cursorOffset:)` — dual projection entry point.
@@ -212,6 +216,8 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 | `MarkdownRenderOptions` | `struct` | **Stable** | Low | Options value type |
 | `TableRenderPolicy` | `struct` | **Stable** | Low | Table width/truncation policy |
 | `TableOverflowBehavior` | `enum` | **Stable** | Very low | `.degradeImmediately` / `.compactThenTruncateThenDegrade` |
+| `WideTableStrategy` | `enum` | **Stable** | Very low | `.alwaysBox` / `.autoReadable` |
+| `TableStreamingBehavior` | `enum` | **Stable** | Very low | `.monotonic` / `.strict` |
 | `StreamingMarkdownEngine` | `class` | **Stable** | Low | Primary consumer-facing engine |
 | `PlainTextMarkdownEngine` | `class` | **Stable** | Low | No-op fallback |
 | `prefixedLogicalLines(prefix:text:)` | `func` | **Internal-detail** | High | Use `MarkdownEngine` instead |
