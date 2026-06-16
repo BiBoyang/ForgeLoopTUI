@@ -1,7 +1,7 @@
 # ForgeLoopTUI Public API Surface
 
-Date: 2026-05-23  
-Version: 1.1.0  
+Date: 2026-06-16  
+Version: 1.2.0  
 Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party consumer may depend on.
 
 ---
@@ -183,7 +183,7 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 | `AppKitEventAdapter` | `struct` | **Provisional** | Low | NSEvent → KeyEvent adapter; for use in NSView.keyDown(with:) |
 | `HybridObservableState` | `class` | **Provisional** | Low | `@Observable` + `@MainActor` wrapper; requires macOS 14+; UI state container, not cross-thread Sendable |
 | `PanelMetadataProviding` | `protocol` | **Provisional** | Low | Implement on app-side panel data; bridge to `PanelMeta` via `PanelMeta(_:)` init |
-| `AppKitBridgeError` | `enum` | **Provisional** | Medium | `AppKitEventAdapter` mapping failures; currently one case |
+| `AppKitBridgeError` | `enum` | **Deprecated** | N/A | Unused; removed in 2.0.0 |
 
 **Consumer dependency points:**
 - `HybridRenderAdapter.renderBoth(state:config:cursorOffset:)` — dual projection entry point.

@@ -63,4 +63,95 @@ final class TextInputTests: XCTestCase {
         XCTAssertEqual(state.cursorPosition, 0)
         XCTAssertEqual(state.scrollOffset, 0)
     }
+
+    // MARK: - CJK insertion and cursor
+
+    func testInsertCJKAdvancesCursor() {
+        var state = TextInputState()
+        state.handle(.insertText("你好世界"))
+
+        XCTAssertEqual(state.text, "你好世界")
+        XCTAssertEqual(state.cursorPosition, 4)
+    }
+
+    func testMixedCJKASCIIMoveLeftRight() {
+        var state = TextInputState(text: "ab中文cd")
+        XCTAssertEqual(state.cursorPosition, 6)
+
+        state.handle(.moveLeft)
+        state.handle(.moveLeft)
+        XCTAssertEqual(state.cursorPosition, 4)
+
+        state.handle(.moveRight)
+        XCTAssertEqual(state.cursorPosition, 5)
+    }
+
+    // MARK: - Wide-char rendering and scrolling
+
+    func testRenderCJKScrolling() {
+        var state = TextInputState(text: "你好世界")
+        let rendered = state.render(totalWidth: 5)
+
+        XCTAssertEqual(rendered.visibleText, "好世")
+        XCTAssertEqual(rendered.scrollOffset, 2)
+        XCTAssertEqual(rendered.cursorOffset, 0)
+    }
+
+    func testRenderMixedWidthScrolling() {
+        var state = TextInputState(text: "abc中文defg")
+        state.handle(.moveToStart)
+        state.handle(.moveRight)
+        state.handle(.moveRight)
+        state.handle(.moveRight)
+        state.handle(.moveRight)
+        state.handle(.moveRight)
+        XCTAssertEqual(state.cursorPosition, 5)
+
+        let rendered = state.render(totalWidth: 6)
+
+        XCTAssertEqual(rendered.visibleText, "bc中文")
+        XCTAssertEqual(rendered.scrollOffset, 1)
+        XCTAssertEqual(rendered.cursorOffset, 0)
+    }
+
+    // MARK: - Boundary snap
+
+    func testScrollOffsetSnapsToBoundary() {
+        var state = TextInputState(text: "你好世界", cursorAtEnd: false, scrollOffset: 3)
+        state.handle(.moveRight)
+        state.handle(.moveRight)
+
+        let rendered = state.render(totalWidth: 4)
+
+        XCTAssertEqual(rendered.scrollOffset, 2)
+        XCTAssertEqual(rendered.visibleText, "好世")
+    }
+
+    func testScrollOffsetClampsToMax() {
+        var state = TextInputState(text: "hi", scrollOffset: 10)
+        let rendered = state.render(totalWidth: 100)
+
+        XCTAssertEqual(rendered.scrollOffset, 0)
+        XCTAssertEqual(rendered.visibleText, "hi")
+    }
+
+    // MARK: - Viewport edges
+
+    func testRenderOneColumnViewport() {
+        var state = TextInputState(text: "abc")
+        let rendered = state.render(totalWidth: 1)
+
+        XCTAssertEqual(rendered.visibleText, "c")
+        XCTAssertEqual(rendered.line, "c")
+        XCTAssertEqual(rendered.cursorOffset, 0)
+    }
+
+    func testRenderEmptyText() {
+        var state = TextInputState(text: "")
+        let rendered = state.render(prefix: "> ", totalWidth: 10)
+
+        XCTAssertEqual(rendered.visibleText, "")
+        XCTAssertEqual(rendered.line, "> ")
+        XCTAssertEqual(rendered.cursorOffset, 0)
+    }
 }

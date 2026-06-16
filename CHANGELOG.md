@@ -6,6 +6,19 @@ Format and section names follow `docs/semver-and-api-stability.md` (§7).
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-06-16
+
+### Added
+- VirtualTerminal CHA (ESC[G]) support for full .marker cursor testing
+- Markdown strikethrough (~~text~~) via SGR 9
+- Markdown task list (- [ ] / - [x]) with ☐/☑
+
+### Changed
+- TextInputTests expanded with CJK, wide-char scrolling, and viewport edge coverage
+
+### Deprecated
+- AppKitBridgeError (unused, removed in 2.0.0)
+
 ## [1.1.0] — 2026-06-13
 
 ### Added

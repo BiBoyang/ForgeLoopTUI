@@ -153,6 +153,36 @@ final class MarkdownEngineTests: XCTestCase {
         XCTAssertFalse(lines.contains(where: { $0.contains("│ a │") || $0.contains("┌──") }))
     }
 
+    func testFourBacktickCodeFenceIsRecognized() {
+        let engine = StreamingMarkdownEngine()
+        let text = """
+        ````swift
+        let x = 1
+        ````
+        """
+        let lines = engine.render(text: text, isFinal: true)
+        XCTAssertEqual(lines, [
+            "┌─ code swift",
+            "│ let x = 1",
+            "└─ end code",
+        ])
+    }
+
+    func testFourTildeCodeFenceIsRecognized() {
+        let engine = StreamingMarkdownEngine()
+        let text = """
+        ~~~~
+        tilde fence
+        ~~~~
+        """
+        let lines = engine.render(text: text, isFinal: true)
+        XCTAssertEqual(lines, [
+            "┌─ code",
+            "│ tilde fence",
+            "└─ end code",
+        ])
+    }
+
     func testStreamingEngineFormatsHeadingsQuotesListsAndCodeBlocks() {
         let engine = StreamingMarkdownEngine()
         let text = """
@@ -493,6 +523,71 @@ final class MarkdownEngineTests: XCTestCase {
         // Heading prefix preserved, bold applied to "world"
         XCTAssertTrue(result[0].hasPrefix("█ Hello "))
         XCTAssertTrue(result[0].contains("\u{1B}[1mworld\u{1B}[0m"))
+    }
+
+    // MARK: - Strikethrough
+
+    func testStrikethroughBasic() {
+        let engine = StreamingMarkdownEngine()
+        let result = engine.render(text: "hello ~~world~~", isFinal: true)
+        XCTAssertEqual(result.count, 1)
+        XCTAssertTrue(result[0].contains("\u{1B}[9mworld\u{1B}[0m"))
+    }
+
+    func testStrikethroughNotInCodeSpan() {
+        let engine = StreamingMarkdownEngine()
+        let result = engine.render(text: "`~~text~~`", isFinal: true)
+        XCTAssertEqual(result.count, 1)
+        XCTAssertTrue(result[0].contains("\u{1B}[7m~~text~~\u{1B}[0m"))
+        XCTAssertFalse(result[0].contains("\u{1B}[9m"))
+    }
+
+    func testStrikethroughEmpty() {
+        let engine = StreamingMarkdownEngine()
+        // Inline empty strikethrough (no content between markers) should not parse.
+        let result = engine.render(text: "a ~~~~ b", isFinal: true)
+        XCTAssertEqual(result, ["a ~~~~ b"])
+    }
+
+    func testStrikethroughWithBold() {
+        let engine = StreamingMarkdownEngine()
+        let result = engine.render(text: "**bold ~~strike~~ end**", isFinal: true)
+        XCTAssertEqual(result.count, 1)
+        let line = result[0]
+        XCTAssertTrue(line.contains("\u{1B}[1m"))
+        XCTAssertTrue(line.contains("\u{1B}[9mstrike\u{1B}[0m"))
+    }
+
+    // MARK: - Task list
+
+    func testTaskListUnchecked() {
+        let engine = StreamingMarkdownEngine()
+        let result = engine.render(text: "- [ ] item", isFinal: true)
+        XCTAssertEqual(result, ["☐ item"])
+    }
+
+    func testTaskListChecked() {
+        let engine = StreamingMarkdownEngine()
+        let result = engine.render(text: "- [x] done", isFinal: true)
+        XCTAssertEqual(result, ["☑ done"])
+    }
+
+    func testTaskListInBlockquote() {
+        let engine = StreamingMarkdownEngine()
+        let result = engine.render(text: "> - [ ] task", isFinal: true)
+        XCTAssertEqual(result, ["│ ☐ task"])
+    }
+
+    func testTaskListNoSpaceDegrades() {
+        let engine = StreamingMarkdownEngine()
+        let result = engine.render(text: "- [x]not", isFinal: true)
+        XCTAssertEqual(result, ["• [x]not"])
+    }
+
+    func testTaskListOnOrderedListDoesNotApply() {
+        let engine = StreamingMarkdownEngine()
+        let result = engine.render(text: "1. [x] item", isFinal: true)
+        XCTAssertEqual(result, ["1. [x] item"])
     }
 
     // MARK: - Stable prefix cap (C4)

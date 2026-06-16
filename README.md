@@ -32,7 +32,7 @@
 
 It provides:
 - event-driven transcript rendering
-- terminal-friendly Markdown presentation for headings, lists, blockquotes, fenced code blocks, and tables
+- terminal-friendly Markdown presentation for headings, lists, task lists, blockquotes, fenced code blocks, tables, and strikethrough
 - in-place streaming replacement with `inlineAnchor` / `legacyAbsolute` strategies
 - **commit / live partition rendering**: committed lines are append-only, live lines are efficiently diffed; committed append uses `ESC[nL` fast path to avoid redrawing unchanged live content
 - **live budget with overflow settlement**: when live lines exceed a configured budget, oldest lines are automatically settled into committed to avoid unbounded growth. Budget can be counted by logical line count (`.logicalLines`, default for back-compat) or by wrap-aware physical rows (`.physicalRows`, recommended for streaming Markdown / narrow terminals). The same algorithm is shared by `TUI.liveBudget` and `FrameComposer`'s optional `liveOverflow: .settleThenClip` policy
@@ -75,7 +75,7 @@ It provides:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/BiBoyang/ForgeLoopTUI.git", from: "1.1.0")
+    .package(url: "https://github.com/BiBoyang/ForgeLoopTUI.git", from: "1.2.0")
 ],
 targets: [
     .target(

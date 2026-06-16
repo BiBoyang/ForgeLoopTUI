@@ -543,4 +543,24 @@ struct CommittedLiveRenderTests {
         #expect(combined.contains("\u{1B}[1G"))
         #expect(!combined.contains("\u{1B}[0A"))
     }
+
+    @Test("marker mode cursor lands correctly on VirtualTerminal")
+    func testMarkerOnVirtualTerminal() {
+        let vt = VirtualTerminal(width: 10, height: 5)
+        let tui = TUI(
+            strategy: .inlineAnchor,
+            isTTY: true,
+            terminalWidth: 10,
+            cursorPositioningMode: .marker,
+            terminal: vt
+        )
+        tui.render(
+            committed: [],
+            live: ["hello"],
+            cursorPlacement: CursorPlacement(up: 0, offset: 2)
+        )
+        // ESC[4G sets cursor to 1-indexed column 4 → 0-indexed column 3.
+        #expect(vt.cursorCol == 3)
+        #expect(vt.screenLines[0].hasPrefix("hello"))
+    }
 }

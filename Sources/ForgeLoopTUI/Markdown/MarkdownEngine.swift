@@ -232,7 +232,9 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
 
     private func isCodeFenceDelimiter(_ line: String) -> Bool {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
-        return trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~")
+        guard let first = trimmed.first, first == "`" || first == "~" else { return false }
+        let run = trimmed.prefix(while: { $0 == first })
+        return run.count >= 3
     }
 
     private func renderInlineMarkdown(_ line: String) -> String {
@@ -242,7 +244,7 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
     }
 
     /// Apply inline formatting: code spans (`` ` ``), bold (`**`), italic (`*`),
-    /// and links (`[text](url)`). Code spans take priority — no formatting within them.
+    /// strikethrough (`~~`), and links (`[text](url)`). Code spans take priority — no formatting within them.
     private func applyInlineFormatting(_ text: String) -> String {
         var result = ""
         var i = text.startIndex
@@ -277,7 +279,7 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
                 if let end = text[afterStars...].firstRange(of: "**") {
                     let content = String(text[afterStars..<end.lowerBound])
                     if !content.isEmpty {
-                        result += "\u{1B}[1m\(content)\u{1B}[0m"
+                        result += "\u{1B}[1m\(applyInlineFormatting(content))\u{1B}[0m"
                         i = end.upperBound
                         continue
                     }
@@ -291,8 +293,21 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
                    end != afterStar {
                     let content = String(text[afterStar..<end])
                     if !content.isEmpty {
-                        result += "\u{1B}[3m\(content)\u{1B}[0m"
+                        result += "\u{1B}[3m\(applyInlineFormatting(content))\u{1B}[0m"
                         i = text.index(after: end)
+                        continue
+                    }
+                }
+            }
+            // Strikethrough: ~~text~~
+            let nextIdxStrike = text.index(after: i)
+            if nextIdxStrike < text.endIndex, text[i] == "~", text[nextIdxStrike] == "~" {
+                let afterStrike = text.index(i, offsetBy: 2)
+                if let end = text[afterStrike...].firstRange(of: "~~") {
+                    let content = String(text[afterStrike..<end.lowerBound])
+                    if !content.isEmpty {
+                        result += "\u{1B}[9m\(applyInlineFormatting(content))\u{1B}[0m"
+                        i = end.upperBound
                         continue
                     }
                 }
@@ -431,8 +446,15 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         if let marker = trimmed.first, (marker == "-" || marker == "+" || marker == "*") {
             let nextIndex = trimmed.index(after: trimmed.startIndex)
             guard nextIndex < trimmed.endIndex, trimmed[nextIndex] == " " else { return nil }
-            let content = String(trimmed[trimmed.index(after: nextIndex)...])
-            return "\(unorderedListBullet(for: nestingLevel)) \(content)"
+            let afterSpace = trimmed.index(after: nextIndex)
+            let rest = String(trimmed[afterSpace...])
+            if rest.hasPrefix("[ ] ") {
+                return "☐ \(rest.dropFirst(4))"
+            }
+            if rest.hasPrefix("[x] ") {
+                return "☑ \(rest.dropFirst(4))"
+            }
+            return "\(unorderedListBullet(for: nestingLevel)) \(rest)"
         }
 
         let digits = trimmed.prefix(while: { $0.isNumber })

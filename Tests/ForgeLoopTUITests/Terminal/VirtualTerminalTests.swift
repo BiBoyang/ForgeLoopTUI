@@ -217,6 +217,32 @@ final class VirtualTerminalTests: XCTestCase {
         XCTAssertEqual(vt.cursorCol, 4)
     }
 
+    // MARK: - CHA
+
+    func testCHASetsColumn() {
+        let vt = VirtualTerminal(width: 10, height: 5)
+        vt.write("\u{1B}[2G")
+        XCTAssertEqual(vt.cursorCol, 1)
+        vt.write("X")
+        XCTAssertEqual(vt.screenLines[0], " X        ")
+    }
+
+    func testCHADefaultsToCol1() {
+        let vt = VirtualTerminal(width: 10, height: 5)
+        vt.write("abc\u{1B}[G")
+        XCTAssertEqual(vt.cursorCol, 0)
+        vt.write("X")
+        XCTAssertEqual(vt.screenLines[0], "Xbc       ")
+    }
+
+    func testCHAClamps() {
+        let vt = VirtualTerminal(width: 10, height: 5)
+        vt.write("\u{1B}[100G")
+        XCTAssertEqual(vt.cursorCol, 9)
+        vt.write("\u{1B}[0G")
+        XCTAssertEqual(vt.cursorCol, 0)
+    }
+
     // MARK: - CSI L/M (Insert/Delete Lines)
 
     func testInsertLinesShiftsContentDown() {

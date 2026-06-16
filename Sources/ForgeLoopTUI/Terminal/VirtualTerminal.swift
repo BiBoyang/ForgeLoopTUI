@@ -7,6 +7,7 @@ import Foundation
 /// - `\r`、`\n`
 /// - `ESC[2J`（清屏）、`ESC[H`（归位）
 /// - `ESC[nA`（上移）、`ESC[nB`（下移）、`ESC[nC`（右移）、`ESC[nD`（左移）
+/// - `ESC[nG`（光标绝对列，CHA）
 /// - `ESC[2K`（清除当前行）
 ///
 /// 网格/光标/滚屏行为将在后续迭代继续深化。
@@ -172,6 +173,9 @@ public final class VirtualTerminal: Terminal, @unchecked Sendable {
             cursorCol = min(width - 1, cursorCol + (params.first ?? 1))
         case "D":
             cursorCol = max(0, cursorCol - (params.first ?? 1))
+        case "G":
+            let col = params.first ?? 1
+            cursorCol = max(0, min(width - 1, col - 1))
         case "K":
             if params.first == 2 {
                 clearCurrentLine()

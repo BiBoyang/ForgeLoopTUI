@@ -1,6 +1,7 @@
 import Foundation
 
 /// AppKit Bridge 层可能产生的错误。
+@available(*, deprecated, message: "AppKitBridgeError is unused and will be removed in 2.0.0")
 public enum AppKitBridgeError: Error, Sendable, Equatable {
     /// 输入事件无法映射到 KeyEvent（如未知 specialKey、无字符且无 keyCode 匹配）
     case unmappableEvent(description: String)

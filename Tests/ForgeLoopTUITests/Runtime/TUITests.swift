@@ -282,4 +282,42 @@ final class TUITests: XCTestCase {
         let tui = TUI()
         XCTAssertNil(tui.diagnosticsHandler)
     }
+
+    func testMarkerModeOnVirtualTerminal() {
+        let vt = VirtualTerminal(width: 10, height: 5)
+        let tui = TUI(
+            strategy: .inlineAnchor,
+            isTTY: true,
+            terminalWidth: 10,
+            cursorPositioningMode: .marker,
+            terminal: vt
+        )
+
+        tui.render(committed: [], live: ["prompt"], cursorPlacement: CursorPlacement(up: 0, offset: 2))
+
+        XCTAssertTrue(vt.screenLines[0].hasPrefix("prompt"))
+        XCTAssertEqual(vt.cursorRow, 0)
+        XCTAssertEqual(vt.cursorCol, 4) // ESC[5G → 1-indexed col 5 → 0-indexed col 4
+    }
+
+    func testMarkerModeUndoOnVirtualTerminal() {
+        let vt = VirtualTerminal(width: 10, height: 5)
+        let tui = TUI(
+            strategy: .inlineAnchor,
+            isTTY: true,
+            terminalWidth: 10,
+            cursorPositioningMode: .marker,
+            terminal: vt
+        )
+
+        tui.render(committed: [], live: ["abcde", "xy"], cursorPlacement: CursorPlacement(up: 1, offset: 3))
+        XCTAssertEqual(vt.cursorRow, 0)
+        XCTAssertEqual(vt.cursorCol, 2)
+
+        tui.render(committed: [], live: ["abcde", "xy"], cursorOffset: 0)
+
+        // Undo moves down 1 row and emits CHA to canonical column 3 (0-indexed col 2).
+        XCTAssertEqual(vt.cursorRow, 1)
+        XCTAssertEqual(vt.cursorCol, 2)
+    }
 }
