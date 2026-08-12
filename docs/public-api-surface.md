@@ -1,7 +1,7 @@
 # ForgeLoopTUI Public API Surface
 
-Date: 2026-06-16  
-Version: 1.2.0  
+Date: 2026-08-13  
+Version: 1.2.1  
 Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party consumer may depend on.
 
 ---

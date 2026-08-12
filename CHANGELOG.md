@@ -6,6 +6,12 @@ Format and section names follow `docs/semver-and-api-stability.md` (§7).
 
 ## [Unreleased]
 
+## [1.2.1] — 2026-08-13
+
+### Fixed
+- TranscriptRenderer: thinking-block and streaming in-place replacements that change line counts now shift tracked indices (pendingTools, notificationLines, streamingRange, completedRange, thinkingRange) by the line delta; `shiftIndices` compares range lowerBounds so adjacent ranges are not widened incorrectly. Covered by new `TranscriptRendererIndexShiftTests`.
+- MarkdownEngine: `stableAdvance` now retreats when the stable-prefix candidate ends inside an unclosed code fence (`retreatToAvoidSplittingUnclosedCodeFence`), preventing the live tail from being re-parsed with `inCodeFence = false` and misrendering the closing fence as a new opening. Fence retreat runs before table retreats and reuses `isCodeFenceDelimiter` semantics.
+
 ## [1.2.0] — 2026-06-16
 
 ### Added
