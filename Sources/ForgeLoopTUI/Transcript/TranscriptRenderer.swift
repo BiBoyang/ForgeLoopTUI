@@ -100,7 +100,11 @@ public final class TranscriptRenderer {
                 ? []
                 : content.split(separator: "\n", omittingEmptySubsequences: false).map { "💭 \($0)" }
             if let range = thinkingRange {
+                let delta = thinkingLines.count - range.count
                 lines.replace(range: range, with: thinkingLines)
+                if delta != 0 {
+                    shiftIndices(after: range.upperBound - 1, by: delta)
+                }
                 thinkingRange = range.lowerBound..<(range.lowerBound + thinkingLines.count)
             } else {
                 let start = lines.count
@@ -182,26 +186,27 @@ public final class TranscriptRenderer {
                 notificationLines[index] += delta
             }
         }
-        if let range = streamingRange {
-            let newLower = range.lowerBound > threshold ? range.lowerBound + delta : range.lowerBound
-            let newUpper = range.upperBound > threshold ? range.upperBound + delta : range.upperBound
-            streamingRange = newLower..<newUpper
+        // range 以 lowerBound 整体判定：排在编辑点之后的 range 两个边界一起偏移。
+        // 独立比较 upperBound 会把"恰好结束于编辑点"的相邻 range（如 thinking 紧跟
+        // streaming 插入点、中间无空行）错误地撑大。
+        if let range = streamingRange, range.lowerBound > threshold {
+            streamingRange = (range.lowerBound + delta)..<(range.upperBound + delta)
         }
-        if let range = completedRange {
-            let newLower = range.lowerBound > threshold ? range.lowerBound + delta : range.lowerBound
-            let newUpper = range.upperBound > threshold ? range.upperBound + delta : range.upperBound
-            completedRange = newLower..<newUpper
+        if let range = completedRange, range.lowerBound > threshold {
+            completedRange = (range.lowerBound + delta)..<(range.upperBound + delta)
         }
-        if let range = thinkingRange {
-            let newLower = range.lowerBound > threshold ? range.lowerBound + delta : range.lowerBound
-            let newUpper = range.upperBound > threshold ? range.upperBound + delta : range.upperBound
-            thinkingRange = newLower..<newUpper
+        if let range = thinkingRange, range.lowerBound > threshold {
+            thinkingRange = (range.lowerBound + delta)..<(range.upperBound + delta)
         }
     }
 
     private func replaceStreaming(with newLines: [String]) {
         let range = streamingRange ?? (lines.count..<lines.count)
+        let delta = newLines.count - range.count
         lines.replace(range: range, with: newLines)
+        if delta != 0 {
+            shiftIndices(after: range.upperBound - 1, by: delta)
+        }
         streamingRange = range.lowerBound..<(range.lowerBound + newLines.count)
     }
 
