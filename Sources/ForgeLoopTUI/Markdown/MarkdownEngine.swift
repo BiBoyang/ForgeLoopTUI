@@ -78,6 +78,13 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         let remainder = String(text[candidateEnd...])
 
         let lines = candidateText.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+
+        // fence retreat 必须先于表格 retreat：未闭合 fence 之后的所有行按
+        // renderFully 的语义都是 fence 内容，其中的表格状行不是真正的表格。
+        if let retreat = retreatToAvoidSplittingUnclosedCodeFence(lines: lines) {
+            return retreat
+        }
+
         if let retreat = retreatToAvoidSplittingTrailingStreamingTable(lines: lines, remainder: remainder) {
             return retreat
         }
@@ -143,6 +150,29 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         }
 
         return nil
+    }
+
+    /// 与表格 retreat 同构的代码块防御：若 candidate 前缀以未闭合的 code fence
+    /// 结尾（fence 分隔符出现奇数次），回退到该 fence 起始行之前——宁可稳定前缀
+    /// 更短、多渲染，也不把稳定边界切在未闭合代码块中间。fence 判定复用
+    /// `isCodeFenceDelimiter`，与 `renderFully` 的 inCodeFence 切换语义保持一致
+    /// （不检查开/闭合 fence 的长度匹配）。
+    private func retreatToAvoidSplittingUnclosedCodeFence(lines: [String]) -> Int? {
+        var inCodeFence = false
+        var openingFenceIndex: Int?
+        for (index, line) in lines.enumerated() where isCodeFenceDelimiter(line) {
+            inCodeFence.toggle()
+            openingFenceIndex = inCodeFence ? index : nil
+        }
+        guard inCodeFence, let fenceStart = openingFenceIndex else { return nil }
+
+        let prefixLines = lines.prefix(fenceStart)
+        let prefixText = prefixLines.joined(separator: "\n")
+        var retreat = prefixText.count
+        if fenceStart > 0 {
+            retreat += 1
+        }
+        return retreat
     }
 
     private func renderFully(text: String, isFinal: Bool) -> [String] {

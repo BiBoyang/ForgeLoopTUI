@@ -590,6 +590,128 @@ final class MarkdownEngineTests: XCTestCase {
         XCTAssertEqual(result, ["1. [x] item"])
     }
 
+    // MARK: - Code fence streaming retreat
+
+    /// 稳定边界落在未闭合代码块中间时，分段渲染（stable + live）的最终输出
+    /// 必须与一次性 renderFully 全文的输出一致。修复前：闭合 ``` 在 live 片段里
+    /// 被误判为新 fence 的开始，出现第二个 "┌─ code"。
+    func testStreamingCodeFenceRetreatMatchesOneShotFinalRender() {
+        let engine = StreamingMarkdownEngine()
+        let frame1 = "```swift\nlet x = 1\n"
+        let frame2 = frame1 + "let y = 2\n"
+        let frame3 = frame2 + "```\nafter\n"
+
+        // 流式中间帧应与全新引擎对同一文本的一次性（非 final）渲染一致。
+        XCTAssertEqual(
+            engine.render(text: frame1, isFinal: false),
+            StreamingMarkdownEngine().render(text: frame1, isFinal: false)
+        )
+        XCTAssertEqual(
+            engine.render(text: frame2, isFinal: false),
+            StreamingMarkdownEngine().render(text: frame2, isFinal: false)
+        )
+
+        let finalLines = engine.render(text: frame3, isFinal: true)
+        XCTAssertEqual(
+            finalLines,
+            StreamingMarkdownEngine().render(text: frame3, isFinal: true)
+        )
+        XCTAssertEqual(finalLines.filter { $0.hasPrefix("┌─ code") }.count, 1)
+        XCTAssertEqual(finalLines.filter { $0 == "└─ end code" }.count, 1)
+        XCTAssertTrue(finalLines.contains("│ let y = 2"))
+    }
+
+    /// fence 从输入最开始就未闭合：回退结果为 0，稳定前缀不推进，
+    /// 直到 fence 闭合后一次性收敛到与一次性渲染相同的输出。
+    func testStreamingCodeFenceUnclosedFromStartRetreatsToZero() {
+        let engine = StreamingMarkdownEngine()
+        let frame1 = "```\nalpha\nbeta\n"
+        XCTAssertEqual(
+            engine.render(text: frame1, isFinal: false),
+            ["┌─ code", "│ alpha", "│ beta", "│"]
+        )
+
+        let frame2 = frame1 + "gamma\n```\n"
+        let finalLines = engine.render(text: frame2, isFinal: true)
+        XCTAssertEqual(
+            finalLines,
+            StreamingMarkdownEngine().render(text: frame2, isFinal: true)
+        )
+        XCTAssertEqual(finalLines.filter { $0.hasPrefix("┌─ code") }.count, 1)
+        XCTAssertTrue(finalLines.contains("│ gamma"))
+    }
+
+    /// fence 之前的内容可以正常稳定化，回退点应落在 fence 起始行之前，
+    /// 而不是整个输入的起点。
+    func testStreamingCodeFenceRetreatPreservesContentBeforeFence() {
+        let engine = StreamingMarkdownEngine()
+        let frame1 = "intro\n```\ncode1\n"
+        XCTAssertEqual(
+            engine.render(text: frame1, isFinal: false),
+            StreamingMarkdownEngine().render(text: frame1, isFinal: false)
+        )
+
+        let frame2 = frame1 + "code2\n```\noutro\n"
+        let finalLines = engine.render(text: frame2, isFinal: true)
+        XCTAssertEqual(
+            finalLines,
+            StreamingMarkdownEngine().render(text: frame2, isFinal: true)
+        )
+        XCTAssertEqual(finalLines.first, "intro")
+        XCTAssertEqual(finalLines.filter { $0.hasPrefix("┌─ code") }.count, 1)
+        XCTAssertTrue(finalLines.contains("│ code2"))
+    }
+
+    /// 已闭合的 fence 不影响判定：只有最后一个仍未闭合的 fence 触发回退。
+    func testStreamingCodeFenceRetreatIgnoresClosedFences() {
+        let engine = StreamingMarkdownEngine()
+        let frame1 = "```\na\n```\nmiddle\n```\nb\n"
+        _ = engine.render(text: frame1, isFinal: false)
+
+        let frame2 = frame1 + "c\n```\n"
+        let finalLines = engine.render(text: frame2, isFinal: true)
+        XCTAssertEqual(
+            finalLines,
+            StreamingMarkdownEngine().render(text: frame2, isFinal: true)
+        )
+        XCTAssertEqual(finalLines.filter { $0.hasPrefix("┌─ code") }.count, 2)
+        XCTAssertEqual(finalLines.filter { $0 == "└─ end code" }.count, 2)
+        XCTAssertTrue(finalLines.contains("│ c"))
+    }
+
+    /// 表格状内容出现在未闭合代码块内时，按 renderFully 的既有语义它是 fence
+    /// 内容而非表格——fence retreat 必须先于表格 retreat 生效。
+    func testTableLikeLinesInsideUnclosedCodeFenceRetreatToFenceStart() {
+        let engine = StreamingMarkdownEngine()
+        let frame1 = "```markdown\n| a | b |\n| --- | --- |\n"
+        _ = engine.render(text: frame1, isFinal: false)
+
+        let frame2 = frame1 + "| 1 | 2 |\n"
+        XCTAssertEqual(
+            engine.render(text: frame2, isFinal: false),
+            StreamingMarkdownEngine().render(text: frame2, isFinal: false)
+        )
+
+        let frame3 = frame2 + "```\n"
+        let finalLines = engine.render(text: frame3, isFinal: true)
+        XCTAssertEqual(finalLines, [
+            "┌─ code markdown",
+            "│ | a | b |",
+            "│ | --- | --- |",
+            "│ | 1 | 2 |",
+            "└─ end code",
+            "",
+        ])
+    }
+
+    /// isFinal = true 路径不受影响：stableAdvance 直接推进全文，
+    /// 未闭合 fence 按既有行为渲染为未闭合的代码块。
+    func testFinalRenderOfUnclosedCodeFenceIsUnchanged() {
+        let engine = StreamingMarkdownEngine()
+        let lines = engine.render(text: "```swift\nlet x = 1\n", isFinal: true)
+        XCTAssertEqual(lines, ["┌─ code swift", "│ let x = 1", "│"])
+    }
+
     // MARK: - Stable prefix cap (C4)
 
     func testLongStreamingContentDoesNotGrowUnbounded() {
