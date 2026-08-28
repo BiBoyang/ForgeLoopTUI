@@ -31,23 +31,85 @@ func ansiStripped(_ text: String) -> String {
 
 func visibleWidth(_ text: String) -> Int {
     let stripped = ansiStripped(text)
-    var width = 0
+    // Fast path: pure ASCII has no grapheme-cluster subtleties — every
+    // printable scalar occupies exactly one cell.
+    var asciiWidth = 0
+    var needsClusterSemantics = false
     for scalar in stripped.unicodeScalars {
         let value = scalar.value
+        if value >= 0x80 {
+            needsClusterSemantics = true
+            break
+        }
         if value < 0x20 || value == 0x7F {
             continue
         }
-        if value < 0x7F {
-            width += 1
-            continue
-        }
-        width += scalarIsWide(value) ? 2 : 1
+        asciiWidth += 1
+    }
+    if !needsClusterSemantics {
+        return asciiWidth
+    }
+    var width = 0
+    for character in stripped {
+        width += graphemeClusterWidth(character)
     }
     return width
 }
 
+/// 单个 grapheme cluster(`Character`)的可见宽度,按终端 wcwidth 语义在
+/// cluster 粒度上计宽:
+///
+/// - C0/DEL 控制符计 0,其余 ASCII 计 1;
+/// - 组合附加符(Mn/Me)与 variation selector 单独出现时计 0;
+/// - 宽 scalar(CJK、全角、多数 emoji,见 ``scalarIsWide``)计 2,其余计 1;
+/// - 多 scalar cluster 整体计一次:ZWJ 序列(👨‍👩‍👧‍👦)、肤色修饰(👍🏽)、
+///   VS16 emoji 呈现(❤️)、国旗 RI 对(🇨🇳)均为 2 格,而非各 scalar 之和。
+///
+/// `visibleWidth` 与 `MultiLineInputState` 的视觉导航共享此判定,
+/// 保证光标计算与布局计算对同一 cluster 的宽度永不分歧。
+func graphemeClusterWidth(_ character: Character) -> Int {
+    let scalars = character.unicodeScalars
+    // Fast path: single scalar (covers ASCII, CJK, plain emoji, lone marks).
+    if scalars.count == 1, let scalar = scalars.first {
+        return scalarCellWidth(scalar)
+    }
+    var rendersAsSingleWideGlyph = false
+    var maxScalarWidth = 0
+    for scalar in scalars {
+        let value = scalar.value
+        // ZWJ、regional indicator、VS16 出现的 cluster 在终端渲染为单个
+        // 2 格字形。
+        if value == 0x200D
+            || value == 0xFE0F
+            || (0x1F1E6...0x1F1FF).contains(value) {
+            rendersAsSingleWideGlyph = true
+        }
+        maxScalarWidth = max(maxScalarWidth, scalarCellWidth(scalar))
+    }
+    // 肤色修饰符(U+1F3FB...U+1F3FF)无需特判:基础 emoji 与修饰符都是宽
+    // scalar,`maxScalarWidth` 已是 2(如 👍🏽)。
+    return rendersAsSingleWideGlyph ? 2 : maxScalarWidth
+}
+
+/// 单一 scalar 的可见宽度;cluster 语义由 ``graphemeClusterWidth`` 负责。
+private func scalarCellWidth(_ scalar: Unicode.Scalar) -> Int {
+    let value = scalar.value
+    if value < 0x20 || value == 0x7F {
+        return 0
+    }
+    if value < 0x7F {
+        return 1
+    }
+    // 组合附加符(Mn/Me,含 VS16 U+FE0F)自身不占格。
+    let category = scalar.properties.generalCategory
+    if category == .nonspacingMark || category == .enclosingMark {
+        return 0
+    }
+    return scalarIsWide(value) ? 2 : 1
+}
+
 /// 单一 Unicode scalar 是否为宽字符（CJK / emoji / 全角符号等）。
-/// `visibleWidth` 与 `MultiLineInputState` 的视觉导航共享此判定。
+/// ``graphemeClusterWidth`` 用它判定 cluster 内各 scalar 的基础宽度。
 func scalarIsWide(_ value: UInt32) -> Bool {
     (0x1100...0x115F).contains(value)
         || (0x231A...0x231B).contains(value)

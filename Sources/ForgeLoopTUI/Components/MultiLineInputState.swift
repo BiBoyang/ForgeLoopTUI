@@ -432,7 +432,10 @@ public struct MultiLineInputState: Sendable, Equatable {
         var consumedVisibleColumns = 0
         var index = 0
         for character in line {
-            let width = characterVisibleWidth(character)
+            // Per-cluster lookup avoids the `String` allocation and
+            // `ansiStripped` overhead of `visibleWidth(String(character))`,
+            // and shares `visibleWidth`'s grapheme-cluster width rules.
+            let width = graphemeClusterWidth(character)
             if width == 0 {
                 index += 1
                 continue
@@ -444,41 +447,6 @@ public struct MultiLineInputState: Sendable, Equatable {
             index += 1
         }
         return line.count
-    }
-
-    /// Inline width lookup for a single `Character` — avoids the `String`
-    /// allocation and `ansiStripped` overhead of `visibleWidth(String(character))`.
-    private static func characterVisibleWidth(_ character: Character) -> Int {
-        let scalars = character.unicodeScalars
-
-        // Fast path: single scalar (covers ASCII, CJK, emoji, and most glyphs).
-        if scalars.count == 1, let scalar = scalars.first {
-            let value = scalar.value
-            if value < 0x20 || value == 0x7F {
-                return 0
-            }
-            if value < 0x7F {
-                return 1
-            }
-            return scalarIsWide(value) ? 2 : 1
-        }
-
-        // Fallback: multi-scalar grapheme clusters (e.g. emoji with ZWJ or
-        // skin-tone modifiers).  Sums per-scalar widths to stay identical to
-        // `visibleWidth(_:)`.
-        var width = 0
-        for scalar in scalars {
-            let value = scalar.value
-            if value < 0x20 || value == 0x7F {
-                continue
-            }
-            if value < 0x7F {
-                width += 1
-                continue
-            }
-            width += scalarIsWide(value) ? 2 : 1
-        }
-        return width
     }
 
 }
