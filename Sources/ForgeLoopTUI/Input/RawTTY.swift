@@ -26,6 +26,16 @@ public final class RawTTY: @unchecked Sendable {
     public let fd: Int32
     private let lock = NSLock()
     private var originalTermios: termios?
+    private var onRestoreFailureStorage: (@Sendable (Int32) -> Void)?
+
+    /// Called with the failing `errno` when restoring termios via `tcsetattr`
+    /// fails. `restore()` cannot throw (it also runs from `deinit`), so this
+    /// hook is the failure-reporting channel. The callback fires while the
+    /// lock is held; it must not call back into this instance.
+    public var onRestoreFailure: (@Sendable (Int32) -> Void)? {
+        get { lock.withLock { onRestoreFailureStorage } }
+        set { lock.withLock { onRestoreFailureStorage = newValue } }
+    }
 
     /// 创建 RawTTY 管理器。
     /// - Parameter fd: 目标文件描述符，默认 `STDIN_FILENO`。
@@ -77,7 +87,9 @@ public final class RawTTY: @unchecked Sendable {
     public func restore() {
         lock.withLock {
             guard var original = originalTermios else { return }
-            _ = tcsetattr(fd, TCSAFLUSH, &original)
+            if tcsetattr(fd, TCSAFLUSH, &original) != 0 {
+                onRestoreFailureStorage?(errno)
+            }
             originalTermios = nil
         }
     }

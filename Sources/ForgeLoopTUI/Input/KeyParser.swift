@@ -59,7 +59,9 @@ public struct KeyParser: Sendable {
 
     /// 解析普通字符（含控制字符）。
     private func parseCharacter(_ c: Character) -> KeyEvent {
-        let scalar = c.unicodeScalars.first!
+        guard let scalar = c.unicodeScalars.first else {
+            return KeyEvent(key: .character("\u{FFFD}"))
+        }
         let value = scalar.value
 
         switch value {
@@ -74,7 +76,8 @@ public struct KeyParser: Sendable {
         case 0x00:
             return KeyEvent(key: .character("@"), modifiers: .ctrl)
         case 0x01...0x1A:
-            let letter = Character(Unicode.Scalar(value + 0x40)!)
+            // 0x01...0x1A + 0x40 = A...Z；UInt8 构造 scalar 非可选。
+            let letter = Character(Unicode.Scalar(UInt8(value + 0x40)))
             return KeyEvent(key: .character(letter), modifiers: .ctrl)
         default:
             return KeyEvent(key: .character(c))
@@ -95,12 +98,12 @@ public struct KeyParser: Sendable {
         case 0x00:
             return KeyEvent(key: .character("@"), modifiers: .ctrl)
         case 0x01...0x1A:
-            let letter = Character(Unicode.Scalar(UInt32(b) + 0x40)!)
+            let letter = Character(Unicode.Scalar(b + 0x40))
             return KeyEvent(key: .character(letter), modifiers: .ctrl)
         default:
             // 可打印 ASCII 兜底为字符，其他丢弃
             if b < 0x7F {
-                return KeyEvent(key: .character(Character(Unicode.Scalar(UInt32(b))!)))
+                return KeyEvent(key: .character(Character(Unicode.Scalar(b))))
             }
             return KeyEvent(key: .character("\u{FFFD}"))
         }

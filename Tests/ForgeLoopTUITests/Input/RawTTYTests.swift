@@ -76,4 +76,32 @@ struct RawTTYTests {
             try tty.enter()
         }
     }
+
+    @Test("restore failure invokes onRestoreFailure with errno")
+    func testRestoreFailureInvokesHook() throws {
+        // Open a PTY pair so `enter()` succeeds, then break the fd.
+        let master = posix_openpt(O_RDWR)
+        guard master >= 0, grantpt(master) == 0, unlockpt(master) == 0,
+              let slaveName = ptsname(master) else {
+            if master >= 0 { close(master) }
+            return // skip: no PTY available in this environment
+        }
+        defer { close(master) }
+        let slave = open(String(cString: slaveName), O_RDWR)
+        guard slave >= 0 else { return }
+
+        final class ErrnoBox: @unchecked Sendable {
+            var value: Int32?
+        }
+        let box = ErrnoBox()
+
+        let tty = RawTTY(fd: slave)
+        try tty.enter()
+        #expect(close(slave) == 0)
+        tty.onRestoreFailure = { box.value = $0 }
+
+        tty.restore()
+
+        #expect(box.value == EBADF)
+    }
 }

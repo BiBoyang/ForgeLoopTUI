@@ -154,7 +154,7 @@ public struct FrameComposer: Sendable {
 
         if liveClipped.count < workingLive.count {
             // Live itself exceeds budget; committed is completely dropped.
-            let finalLive = marker != nil ? [marker!] + liveClipped : liveClipped
+            let finalLive = if let marker { [marker] + liveClipped } else { liveClipped }
             return ComposedFrame(committed: [], live: finalLive, cursorOffset: cursorOffset)
         }
 
@@ -166,9 +166,11 @@ public struct FrameComposer: Sendable {
             maxPhysicalRows: committedBudget
         )
 
-        let finalCommitted = (committedClipped.count < workingCommitted.count && marker != nil)
-            ? [marker!] + committedClipped
-            : committedClipped
+        let finalCommitted = if committedClipped.count < workingCommitted.count, let marker {
+            [marker] + committedClipped
+        } else {
+            committedClipped
+        }
 
         return ComposedFrame(
             committed: finalCommitted,

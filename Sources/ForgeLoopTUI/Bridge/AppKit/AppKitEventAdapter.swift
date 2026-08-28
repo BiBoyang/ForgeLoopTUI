@@ -165,7 +165,8 @@ public struct AppKitEventAdapter: Sendable {
         case 0x00:
             return KeyEvent(key: .character("@"), modifiers: modifiers.union(.ctrl))
         case 0x01...0x1A:
-            let letter = Character(Unicode.Scalar(value + 0x40)!)
+            // 0x01...0x1A + 0x40 = A...Z；UInt8 构造 scalar 非可选。
+            let letter = Character(Unicode.Scalar(UInt8(value + 0x40)))
             return KeyEvent(key: .character(letter), modifiers: modifiers.union(.ctrl))
         default:
             return KeyEvent(key: .character(Character(scalar)), modifiers: modifiers)
