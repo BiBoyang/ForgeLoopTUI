@@ -52,8 +52,19 @@ public final class TUI: @unchecked Sendable {
     public let liveBudget: Int
     public let liveBudgetMode: LiveBudgetMode
     public let cursorPositioningMode: CursorPositioningMode
-    public private(set) var terminalWidth: Int
-    public private(set) var terminalHeight: Int
+
+    /// Terminal width in cells. Thread-safe to read from any thread;
+    /// updated via ``updateTerminalSize(width:height:)``.
+    public var terminalWidth: Int {
+        dimsLock.withLock { _terminalWidth }
+    }
+
+    /// Terminal height in rows. Thread-safe to read from any thread;
+    /// updated via ``updateTerminalSize(width:height:)``.
+    public var terminalHeight: Int {
+        dimsLock.withLock { _terminalHeight }
+    }
+
     private let terminal: Terminal
 
     /// Optional diagnostics callback; defaults to nil (zero overhead). Once
@@ -73,6 +84,17 @@ public final class TUI: @unchecked Sendable {
     /// Always acquired before `lock`; state-only methods take `lock` alone.
     private let renderLock = NSLock()
     private let lock = NSLock()
+
+    /// Leaf lock guarding `_terminalWidth` / `_terminalHeight` storage.
+    ///
+    /// Lock order is a strict total order `renderLock → lock → dimsLock`.
+    /// `dimsLock` MUST remain a leaf lock: its critical sections only read
+    /// or write the two stored dims and must never acquire any other lock
+    /// (doing so would risk ABBA deadlocks).
+    private let dimsLock = NSLock()
+    private var _terminalWidth: Int
+    private var _terminalHeight: Int
+
     private var diagnosticsHandlerStorage: (@Sendable (TUIRenderDiagnostic) -> Void)?
     private var previousLines: [String] = []
     private var lastFramePhysicalRows: Int = 0
@@ -124,8 +146,9 @@ public final class TUI: @unchecked Sendable {
         }
 
         self.strategy = resolvedStrategy
-        self.terminalWidth = terminalWidth
-        self.terminalHeight = terminalHeight
+        // Init-time direct store: no concurrent access during construction.
+        self._terminalWidth = terminalWidth
+        self._terminalHeight = terminalHeight
 
         if let terminal {
             self.terminal = terminal
@@ -143,9 +166,15 @@ public final class TUI: @unchecked Sendable {
 
     public func updateTerminalSize(width: Int, height: Int? = nil) {
         lock.withLock {
-            terminalWidth = width
-            if let height {
-                terminalHeight = height
+            // dimsLock is acquired and released BEFORE the physical-row cache
+            // recomputation below, which reads the new dims through the
+            // computed getters (i.e. acquires dimsLock again). Sequential
+            // acquisition is required; nesting would self-deadlock.
+            dimsLock.withLock {
+                _terminalWidth = width
+                if let height {
+                    _terminalHeight = height
+                }
             }
             // M4-S5: Recompute cached physical rows with new width
             // so that next-frame diff uses correct cursor math.

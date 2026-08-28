@@ -115,4 +115,49 @@ struct TUIRuntimeConcurrencyTests {
         // renders did emit output.
         #expect(!sink.writes.isEmpty)
     }
+
+    @Test("concurrent resize, renders, and dims reads are race-free")
+    func testConcurrentResizeAndDimsReads() {
+        let sink = OutputSink()
+        let tui = TUI(isTTY: true, terminalWidth: 80, terminalHeight: 100) { text in
+            sink.append(text)
+        }
+
+        DispatchQueue.concurrentPerform(iterations: 4) { lane in
+            switch lane {
+            case 0:
+                // Resize lane: width and height churn together.
+                for i in 0..<200 {
+                    tui.updateTerminalSize(width: 60 + (i % 40), height: 80 + (i % 20))
+                }
+            case 1:
+                // Render lane: reads dims through physical-row math.
+                for i in 0..<200 {
+                    tui.render(
+                        committed: ["lane-1 committed \(i)"],
+                        live: ["lane-1 live \(i)"],
+                        cursorOffset: 0
+                    )
+                }
+            case 2:
+                // Dims-read lane: direct public getter access.
+                for _ in 0..<200 {
+                    _ = tui.terminalWidth
+                    _ = tui.terminalHeight
+                }
+            default:
+                // Mixed render + resize lane: worst-case interleaving.
+                for i in 0..<100 {
+                    tui.requestRender(lines: ["lane-3 frame \(i)"], cursorOffset: 0)
+                    tui.updateTerminalSize(width: 70 + (i % 30), height: 90)
+                }
+            }
+        }
+
+        // No crash / no TSan report is the assertion; sanity: renders and
+        // the final dims value are observable.
+        #expect(!sink.writes.isEmpty)
+        #expect(tui.terminalWidth > 0)
+        #expect(tui.terminalHeight > 0)
+    }
 }
