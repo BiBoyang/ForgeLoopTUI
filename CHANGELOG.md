@@ -6,7 +6,13 @@ Format and section names follow `docs/semver-and-api-stability.md` (§7).
 
 ## [Unreleased]
 
+### Added
+- `StdoutTerminal.onWriteFailure` and `RawTTY.onRestoreFailure`: optional hooks reporting the failing `errno` for stdout writes and termios restores — the reporting channel for the documented "Terminal.write does not throw" limitation (see `docs/known-limitations.md`).
+
 ### Fixed
+- `StdoutTerminal.isTTY` and `StdoutTerminal.capability` no longer hardcode `true`/`.truecolor`; they probe the real environment (`isatty` + `COLORTERM`/`TERM`, `TERM=dumb` → `.plain`).
+- Removed force unwraps / provably-trapping constructions in `KeyParser` (Ctrl-letter and ASCII scalar construction now use the non-failable `Unicode.Scalar(UInt8)` initializer), `AppKitEventAdapter`, and `FrameComposer`'s overflow-marker assembly (now `if let`).
+- `TUI`'s `@unchecked Sendable` is now honored: a render pass used to swap state under the lock but assemble output and call `terminal.write` outside it, so concurrent renders could interleave/garble frames. Each pass (state swap + assembly + write) is now fully serialized by a dedicated render lock, and the previously unsynchronized `diagnosticsHandler` property is lock-protected. The handler is now invoked while the render lock is held — it must not call back into `TUI` render methods (documented on the property). Verified with a new concurrency suite, clean under ThreadSanitizer.
 - `TranscriptRenderer` block events are now single-active-block with id matching: previously the block `id` was silently dropped and a second `blockStart` clobbered the open block's streaming state. A `blockStart` arriving while another block is open implicitly finalizes that block (keeping its content), and `blockUpdate`/`blockEnd`/`blockCancel` with a mismatched `id` while another block is open are ignored; the loose no-active-block behavior is preserved for compatibility. Verified against the only known consumer (ForgeLoop), which never runs concurrent blocks.
 - CSI parameter parsing (`ANSIParser` and `ByteStreamBuffer`) now preserves empty parameters as 0 (the ECMA-48 "use default" marker) instead of dropping them — `ESC[;5H` parses as `[0, 5]`, so the omitted first parameter no longer shifts later values into the wrong slot. Both parsers also share one implementation now, so `:` subparameters are flattened identically on both sides (previously `ByteStreamBuffer` dropped colon-containing segments entirely).
 - `StreamingTranscriptAppendState.consume(transcript:activeRange:)` clamps both ends of `activeRange` to the transcript bounds; a stale range past the end of a shrunk transcript no longer crashes on an out-of-bounds subscript.

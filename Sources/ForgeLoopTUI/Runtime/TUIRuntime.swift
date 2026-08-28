@@ -51,9 +51,22 @@ public final class TUI: @unchecked Sendable {
     private let terminal: Terminal
 
     /// 可选诊断回调，默认 nil（零开销）。设置后，渲染关键决策会触发回调。
-    public var diagnosticsHandler: (@Sendable (TUIRenderDiagnostic) -> Void)?
+    ///
+    /// Access is lock-protected. The handler is invoked during a render pass
+    /// while the render lock is held, so it must not call back into `TUI`
+    /// rendering methods (doing so would deadlock).
+    public var diagnosticsHandler: (@Sendable (TUIRenderDiagnostic) -> Void)? {
+        get { lock.withLock { diagnosticsHandlerStorage } }
+        set { lock.withLock { diagnosticsHandlerStorage = newValue } }
+    }
 
+    /// Serializes a whole render pass — state swap, output assembly, and
+    /// `terminal.write` — so concurrent renders can never interleave frames
+    /// or diff against a state that was swapped by another thread mid-pass.
+    /// Always acquired before `lock`; state-only methods take `lock` alone.
+    private let renderLock = NSLock()
     private let lock = NSLock()
+    private var diagnosticsHandlerStorage: (@Sendable (TUIRenderDiagnostic) -> Void)?
     private var previousLines: [String] = []
     private var lastFramePhysicalRows: Int = 0
     private var lastCursorAnchored: Bool = false
@@ -185,6 +198,8 @@ public final class TUI: @unchecked Sendable {
     }
 
     public func requestRender(lines: [String], cursorOffset: Int? = nil) {
+        renderLock.lock()
+        defer { renderLock.unlock() }
         let normalizedLines = splitLogicalLines(lines)
 
         if !isTTY {
@@ -212,6 +227,8 @@ public final class TUI: @unchecked Sendable {
     }
 
     public func appendFrame(lines: [String]) {
+        renderLock.lock()
+        defer { renderLock.unlock() }
         let normalizedLines = splitLogicalLines(lines)
         let separator = isTTY ? ttyNewline : "\n"
         var output = normalizedLines.joined(separator: separator)
@@ -252,6 +269,8 @@ public final class TUI: @unchecked Sendable {
     /// 若构造 `TUI` 时配置了 `liveBudget`,该方法会在 diff 前调用 ``applyLiveBudget(committed:live:)``
     /// 把超出预算的 live 头部沉降到 committed。
     public func render(committed: [String], live: [String], cursorOffset: Int? = nil) {
+        renderLock.lock()
+        defer { renderLock.unlock() }
         let normalizedCommitted = splitLogicalLines(committed)
         let normalizedLive = splitLogicalLines(live)
         let (effectiveCommitted, effectiveLive) = applyLiveBudget(committed: normalizedCommitted, live: normalizedLive)
@@ -271,6 +290,8 @@ public final class TUI: @unchecked Sendable {
     /// 与 `render(committed:live:cursorOffset:)` 走同一个 ``applyLiveBudget(committed:live:)``
     /// 入口,确保两条渲染路径下沉降语义完全一致。
     public func render(committed: [String], live: [String], cursorPlacement: CursorPlacement) {
+        renderLock.lock()
+        defer { renderLock.unlock() }
         let normalizedCommitted = splitLogicalLines(committed)
         let normalizedLive = splitLogicalLines(live)
         let (effectiveCommitted, effectiveLive) = applyLiveBudget(committed: normalizedCommitted, live: normalizedLive)

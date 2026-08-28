@@ -19,7 +19,7 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 
 | Type | Kind | Stability | Breaking-change risk | Migration advice |
 |------|------|-----------|----------------------|------------------|
-| `TUI` | `class` | **Stable** | Low | Core entry point; new `liveBudgetMode` and `cursorPositioningMode` parameters have defaults so existing callers compile unchanged |
+| `TUI` | `class` | **Stable** | Low | Core entry point; new `liveBudgetMode` and `cursorPositioningMode` parameters have defaults so existing callers compile unchanged. `@unchecked Sendable` is honored: each render pass (state swap + output assembly + `terminal.write`) is fully serialized, and `diagnosticsHandler` access is lock-protected |
 | `TUI.liveBudgetMode` | `LiveBudgetMode` | **Stable** | Low | Selects how `liveBudget` counts overflow (`.logicalLines` default; `.physicalRows` recommended for wrap-heavy streaming) |
 | `TUI.cursorPositioningMode` | `CursorPositioningMode` | **Stable** | Low | Selects hardware cursor positioning strategy (`.relative` default; `.marker` recommended when accurate hardware position matters, e.g. IME candidate windows) |
 | `LiveBudgetMode` | `enum` | **Stable** | Low | `.logicalLines` / `.physicalRows`; shared with `FrameComposer` settlement |
@@ -43,7 +43,7 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 |------|------|-----------|----------------------|------------------|
 | `Terminal` | `protocol` | **Stable** | Medium | Adding requirements is breaking; new capabilities will use extension methods |
 | `TerminalCapability` | `enum` | **Stable** | Very low | Plain/ansi16/ansi256/truecolor levels are fixed |
-| `StdoutTerminal` | `struct` | **Stable** | Low | Default constructor stable |
+| `StdoutTerminal` | `struct` | **Stable** | Low | Default constructor stable; `isTTY`/`capability` are honestly probed (isatty + COLORTERM/TERM); `onWriteFailure` hook reports write errno |
 | `VirtualTerminal` | `class` | **Stable** | Low | Test infrastructure; grid/cursor accessors frozen |
 | `Cell` | `struct` | **Provisional** | Medium | May gain new fields (underline, italic) for richer style tracking |
 | `TerminalSize` | `struct` | **Stable** | Very low | Simple value type |
@@ -128,7 +128,7 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 | `KeybindingRegistry` | `struct` | **Stable** | Low | Registry with `register` / `unregister` / `match`; enforces prefix-conflict invariants; throws `duplicate` / `prefixConflict` / `containsPaste` |
 | `KeyResolver` | `class` | **Stable** | Medium | Stateful chord resolver driven by an `InputClock`; emits `ResolvedKey`. **Non-`Sendable`** — all `feed`/`tick`/`flush`/`replaceRegistry` calls must be serialized (e.g. a single actor or thread). |
 | `ResolvedKey` | `enum` | **Stable** | Low | `.action(_)` or `.passthrough(KeyEvent)` |
-| `RawTTY` | `class` | **Stable** | Low | Raw TTY lifecycle |
+| `RawTTY` | `class` | **Stable** | Low | Raw TTY lifecycle; `onRestoreFailure` hook reports `tcsetattr` restore errno |
 | `RawTTYError` | `enum` | **Stable** | Very low | `.notATTY`, `.alreadyEntered`, etc. |
 | `withRawTTY(fd:body:)` | `func` | **Stable** | Very low | RAII helper |
 | `InputReader` | `class` | **Stable** | Medium | High-level reader; event-loop integration may evolve |
