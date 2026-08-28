@@ -7,6 +7,8 @@ Format and section names follow `docs/semver-and-api-stability.md` (§7).
 ## [Unreleased]
 
 ### Fixed
+- CSI parameter parsing (`ANSIParser` and `ByteStreamBuffer`) now preserves empty parameters as 0 (the ECMA-48 "use default" marker) instead of dropping them — `ESC[;5H` parses as `[0, 5]`, so the omitted first parameter no longer shifts later values into the wrong slot. Both parsers also share one implementation now, so `:` subparameters are flattened identically on both sides (previously `ByteStreamBuffer` dropped colon-containing segments entirely).
+- `StreamingTranscriptAppendState.consume(transcript:activeRange:)` clamps both ends of `activeRange` to the transcript bounds; a stale range past the end of a shrunk transcript no longer crashes on an out-of-bounds subscript.
 - Display width is now counted per grapheme cluster instead of per Unicode scalar: ZWJ emoji sequences (👨‍👩‍👧‍👦), skin-tone modifiers (👍🏽), VS16 emoji presentation (❤️), and regional-indicator flags (🇨🇳) count as 2 cells, combining marks (Mn/Me) as 0. Fixes cursor drift in `physicalRows(for:width:)`, `MultiLineInputState` rendering/navigation, and TUI cursor placement; `MultiLineInputState`'s duplicated width logic was removed in favor of the shared implementation. Covered by new `DisplayWidthTests`.
 
 ## [1.2.1] — 2026-08-13

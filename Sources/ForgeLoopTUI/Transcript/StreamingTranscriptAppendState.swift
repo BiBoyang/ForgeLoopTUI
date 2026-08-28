@@ -15,6 +15,10 @@ public struct StreamingTranscriptAppendState: Sendable {
 
         if let activeRange {
             let stableUpperBound = min(activeRange.lowerBound, transcript.count)
+            // Clamp the active range's upper bound too: callers may hold a
+            // stale range after the transcript shrank, and subscripting past
+            // `transcript.count` crashes.
+            let clampedActiveRange = stableUpperBound..<min(activeRange.upperBound, transcript.count)
             var newLines: [String] = []
 
             if stableUpperBound > printedTranscriptCount {
@@ -22,7 +26,7 @@ public struct StreamingTranscriptAppendState: Sendable {
                 printedTranscriptCount = stableUpperBound
             }
 
-            let activeLines = Array(transcript[activeRange])
+            let activeLines = Array(transcript[clampedActiveRange])
             let completedLines = activeLines.isEmpty ? [] : Array(activeLines.dropLast())
             let commonPrefixCount = zip(printedCompletedStreamingLines, completedLines)
                 .prefix { $0 == $1 }
