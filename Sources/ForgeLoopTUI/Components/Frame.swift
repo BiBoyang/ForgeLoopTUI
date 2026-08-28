@@ -39,6 +39,7 @@ public struct ComposedFrame: Sendable {
 ///   participate in the final tail-clip pass, so they become part of the
 ///   committed history before any clipping. This produces a more semantically
 ///   correct commit/live split when streaming long-running output.
+@available(*, deprecated, message: "Part of the unverified declarative component tree (only consumed by the deprecated FrameComposer); will be removed in 2.0.")
 public struct LayoutBudget: Sendable {
     public let maxRows: Int
     public let overflowMarker: String?
@@ -67,6 +68,7 @@ public struct LayoutBudget: Sendable {
 }
 
 /// Assembles a `ComposedFrame` from committed/live component regions.
+@available(*, deprecated, message: "The declarative component tree is an unverified design with no known production consumers and will be removed in 2.0. Render via TUI.render(committed:live:…) or the TranscriptRenderer/CoreRenderEvent event model instead.")
 public struct FrameComposer: Sendable {
     public var committedComponents: [AnyComponent]
     public var liveComponents: [AnyComponent]

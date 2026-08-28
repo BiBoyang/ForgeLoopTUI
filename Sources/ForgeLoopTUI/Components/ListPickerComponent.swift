@@ -1,4 +1,5 @@
 /// A component that renders a selectable list with a cursor indicator.
+@available(*, deprecated, message: "The declarative component tree is an unverified design with no known production consumers and will be removed in 2.0. Render via TUI.render(committed:live:…) or the TranscriptRenderer/CoreRenderEvent event model instead.")
 public struct ListPickerComponent: Component {
     public let items: [String]
     public let selectedIndex: Int

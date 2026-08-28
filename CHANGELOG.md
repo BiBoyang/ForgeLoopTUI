@@ -6,6 +6,9 @@ Format and section names follow `docs/semver-and-api-stability.md` (§7).
 
 ## [Unreleased]
 
+### Deprecated
+- The declarative component tree is deprecated as an unverified design with no known production consumers and will be removed in 2.0: `Component`, `AnyComponent`, `VStack`, `ComponentBuilder`, `FrameComposer`, `LayoutBudget` (+ `LiveOverflowPolicy`), `ModalRenderer`, and the `TranscriptComponent` / `TextInputComponent` / `ListPickerComponent` wrappers. Render via `TUI.render(committed:live:…)` or the `TranscriptRenderer`/`CoreRenderEvent` event model instead. The underlying value types (`ComposedFrame`, `ScreenLayout`, `TextInputState`, `ListPickerState`, …) are unaffected.
+
 ### Removed
 - Dropped the nominal Linux support: the eight `#if canImport(Glibc)` branches were removed (the code targets Darwin directly — `StdoutTerminal` hardcodes `Darwin.write`, the bridge unconditionally imports AppKit — so Linux never actually built). The README now states the supported platform matrix explicitly: macOS 14+ only.
 

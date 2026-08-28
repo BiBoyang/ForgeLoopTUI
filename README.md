@@ -35,7 +35,7 @@ It provides:
 - terminal-friendly Markdown presentation for headings, lists, task lists, blockquotes, fenced code blocks, tables, and strikethrough
 - in-place streaming replacement with `inlineAnchor` / `legacyAbsolute` strategies
 - **commit / live partition rendering**: committed lines are append-only, live lines are efficiently diffed; committed append uses `ESC[nL` fast path to avoid redrawing unchanged live content
-- **live budget with overflow settlement**: when live lines exceed a configured budget, oldest lines are automatically settled into committed to avoid unbounded growth. Budget can be counted by logical line count (`.logicalLines`, default for back-compat) or by wrap-aware physical rows (`.physicalRows`, recommended for streaming Markdown / narrow terminals). The same algorithm is shared by `TUI.liveBudget` and `FrameComposer`'s optional `liveOverflow: .settleThenClip` policy
+- **live budget with overflow settlement**: when live lines exceed a configured budget, oldest lines are automatically settled into committed to avoid unbounded growth. Budget can be counted by logical line count (`.logicalLines`, default for back-compat) or by wrap-aware physical rows (`.physicalRows`, recommended for streaming Markdown / narrow terminals). The same algorithm is shared by `TUI.liveBudget` and `FrameComposer`'s optional `liveOverflow: .settleThenClip` policy (`FrameComposer` is deprecated and will be removed in 2.0)
 - **selectable cursor positioning**: `TUI.cursorPositioningMode` defaults to `.relative` (existing relative-move sequences for back-compat) and offers `.marker` for physical-row + CHA absolute-column positioning, recommended when accurate hardware cursor position matters (e.g. Chinese IME candidate windows on multi-line wrapped input)
 - **tool execution placeholders** (`running...` -> `done/failed`) with stable slot ordering for out-of-order completions
 - **resize-safe anchoring**: physical row caches are recomputed on terminal resize so diff cursor math stays correct
@@ -46,9 +46,9 @@ It provides:
 - safe stdout writing with `EINTR` / `EAGAIN` handling
 - logical-line normalization for embedded `\n` / `\r\n`
 - reusable streaming transcript append planner for scrollback-safe terminal output
-- **declarative component DSL** (`Component` protocol, `VStack`, `@ComponentBuilder`) for composable UI without touching runtime internals
-- **frame composition** (`ComposedFrame`, `FrameComposer`) to assemble committed/live regions from multiple components
-- **viewport budget clipping** (`LayoutBudget`) with physical-row-aware tail retention and optional overflow markers
+- **declarative component DSL** (`Component` protocol, `VStack`, `@ComponentBuilder`) for composable UI without touching runtime internals — **deprecated** (unverified design, removed in 2.0)
+- **frame composition** (`ComposedFrame`; `FrameComposer` deprecated, removed in 2.0) to assemble committed/live regions from multiple components
+- **viewport budget clipping** (`LayoutBudget` — deprecated with `FrameComposer`, removed in 2.0) with physical-row-aware tail retention and optional overflow markers
 - `Terminal` protocol with `StdoutTerminal` and `VirtualTerminal` for testable, decoupled output
 
 ## Contents

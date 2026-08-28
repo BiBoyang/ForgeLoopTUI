@@ -61,25 +61,25 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 
 | Type | Kind | Stability | Breaking-change risk | Migration advice |
 |------|------|-----------|----------------------|------------------|
-| `Component` | `protocol` | **Stable** | Medium | `render(width:)` is the contract; new default implementations are safe |
-| `AnyComponent` | `struct` | **Stable** | Low | Type-erasure wrapper |
-| `VStack` | `struct` | **Stable** | Low | Vertical composition primitive |
-| `ComponentBuilder` | `@resultBuilder enum` | **Stable** | Low | DSL syntax frozen |
+| `Component` | `protocol` | **Deprecated** | Medium | Unverified declarative component tree; no known production consumers. Will be removed in 2.0 — render via `TUI.render(committed:live:…)` or `TranscriptRenderer`/`CoreRenderEvent` |
+| `AnyComponent` | `struct` | **Deprecated** | Low | Type-erasure wrapper; removed in 2.0 with the component tree |
+| `VStack` | `struct` | **Deprecated** | Low | Vertical composition primitive; removed in 2.0 with the component tree |
+| `ComponentBuilder` | `@resultBuilder enum` | **Deprecated** | Low | DSL for the component tree; removed in 2.0 |
 | `EmptyComponent` | `struct` | **Internal-detail** | Medium | Builder fallback; rarely used directly |
 | `ComposedFrame` | `struct` | **Stable** | Low | Core frame model; fields (`committed`, `live`, `cursorOffset`, `cursorPlacement`) frozen |
-| `LayoutBudget` | `struct` | **Stable** | Low | Simple value type; gained optional `liveOverflow` field with a backward-compatible default |
-| `LayoutBudget.LiveOverflowPolicy` | `enum` | **Stable** | Low | `.clipOnly` (default) / `.settleThenClip` |
-| `FrameComposer` | `struct` | **Stable** | Low | Constructor and `render(width:cursorOffset:)` frozen |
+| `LayoutBudget` | `struct` | **Deprecated** | Low | Only consumed by the deprecated `FrameComposer`; removed in 2.0 |
+| `LayoutBudget.LiveOverflowPolicy` | `enum` | **Deprecated** | Low | `.clipOnly` (default) / `.settleThenClip`; removed in 2.0 with `LayoutBudget` |
+| `FrameComposer` | `struct` | **Deprecated** | Low | Unverified declarative component tree; will be removed in 2.0 — use `TUI.render(committed:live:…)` directly |
 | `ScreenLayout` | `struct` | **Stable** | Low | Region fields frozen; new optional fields may be added safely |
 | `ScreenLayoutConfig` | `struct` | **Stable** | Low | Geometry + visibility flags |
 | `ScreenLayoutRenderer` | `struct` | **Stable** | Low | `render(layout:config:cursorOffset:)` is the contract |
-| `ModalRenderer` | `struct` | **Stable** | Low | Modal framing primitive |
+| `ModalRenderer` | `struct` | **Deprecated** | Low | Part of the unverified component-tree family; removed in 2.0 |
 
 **Consumer dependency points:**
-- `Component.render(width:)` — implement for custom components.
+- ~~`Component.render(width:)`~~ — deprecated; do not implement new components.
 - `ComposedFrame(committed:live:cursorOffset:)` — frame assembly.
 - `ScreenLayoutRenderer().render(layout:config:)` — layout → frame.
-- `FrameComposer(committed:live:layoutBudget:).render(width:)` — custom composition.
+- ~~`FrameComposer(committed:live:layoutBudget:).render(width:)`~~ — deprecated; use `TUI.render(committed:live:…)` directly.
 
 ---
 
@@ -100,9 +100,9 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 | `ListPickerAction` | `enum` | **Stable** | Low | `.moveUp`, `.moveDown`, `.confirm`, `.cancel` |
 | `ListPickerOutcome` | `enum` | **Stable** | Low | `.confirmed`, `.cancelled`, `.none` |
 | `ListPickerRenderer` | `struct` | **Stable** | Low | `render(state:)` → `[String]` |
-| `TranscriptComponent` | `struct` | **Stable** | Low | Wraps transcript lines as `Component` |
-| `TextInputComponent` | `struct` | **Stable** | Low | Stateless prompt+value component |
-| `ListPickerComponent` | `struct` | **Stable** | Low | Stateless list picker component |
+| `TranscriptComponent` | `struct` | **Deprecated** | Low | Component-tree wrapper; removed in 2.0 — use `TranscriptRenderer` directly |
+| `TextInputComponent` | `struct` | **Deprecated** | Low | Component-tree wrapper; removed in 2.0 — render `TextInputState.render(prefix:totalWidth:)` output via `TUI.render` directly |
+| `ListPickerComponent` | `struct` | **Deprecated** | Low | Component-tree wrapper; removed in 2.0 — use `ListPickerState` + `ListPickerRenderer` directly |
 | `PromptHistory` | `struct` | **Provisional** | Low | Minimal input history navigation (commit / prev / next / reset / isAtCurrent); frozen for current phase — see `docs/prompt-history-api-decision.md` for evolution criteria |
 
 **Consumer dependency points:**

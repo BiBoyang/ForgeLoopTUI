@@ -1,5 +1,6 @@
 import Foundation
 
+@available(*, deprecated, message: "Part of the unverified declarative component-tree family with no known production consumers; will be removed in 2.0.")
 public struct ModalRenderer: Sendable {
     public let styleMode: Style.RenderingMode
     public let capability: TerminalCapability
