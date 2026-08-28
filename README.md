@@ -75,7 +75,7 @@ It provides:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/BiBoyang/ForgeLoopTUI.git", from: "1.2.0")
+    .package(url: "https://github.com/BiBoyang/ForgeLoopTUI.git", from: "1.2.1")
 ],
 targets: [
     .target(
@@ -95,14 +95,20 @@ func demo() {
     let tui = TUI()
     let renderer = TranscriptRenderer()
 
-    renderer.apply(.messageStart(message: .user("write hello world")))
-    renderer.apply(.messageStart(message: .assistant(text: "", errorMessage: nil)))
-    renderer.apply(.messageUpdate(message: .assistant(text: "Hello", errorMessage: nil)))
-    renderer.apply(.messageUpdate(message: .assistant(text: "Hello world", errorMessage: nil)))
-    renderer.apply(.messageEnd(message: .assistant(text: "Hello world", errorMessage: nil)))
+    // A user prompt, then an assistant reply streaming in as a block.
+    renderer.applyCore(.insert(lines: ["❯ write hello world"]))
+    renderer.applyCore(.blockStart(id: "assistant"))
+    renderer.applyCore(.blockUpdate(id: "assistant", lines: ["Hello"]))
+    renderer.applyCore(.blockUpdate(id: "assistant", lines: ["Hello world"]))
+    renderer.applyCore(.blockEnd(id: "assistant", lines: ["Hello world"], footer: nil))
 
-    renderer.apply(.toolExecutionStart(toolCallId: "1", toolName: "read", args: "{\"path\":\"README.md\"}"))
-    renderer.apply(.toolExecutionEnd(toolCallId: "1", toolName: "read", isError: false, summary: "Loaded 120 lines"))
+    // A tool execution placeholder.
+    renderer.applyCore(.operationStart(
+        id: "tool-1",
+        header: #"● read({"path":"README.md"})"#,
+        status: "⎿ running..."
+    ))
+    renderer.applyCore(.operationEnd(id: "tool-1", isError: false, result: "Loaded 120 lines"))
 
     tui.requestRender(lines: renderer.transcriptLines)
 }
@@ -129,7 +135,7 @@ You can also use:
 - `TranscriptRenderer.activeStreamingRange` to know which transcript range is still mutable
 - `TranscriptRenderer.slotOrderedToolIDs` to inspect pending tools in start order
 
-Low-level logical-line and terminal-metric helpers are kept as implementation details; the stable consumer-facing API is centered on `TUI`, `TranscriptRenderer`, `RenderEvent`, `RenderMessage`, `Style`, `prefixedLogicalLines`, and `StreamingTranscriptAppendState`.
+Low-level logical-line and terminal-metric helpers are kept as implementation details; the stable consumer-facing API is centered on `TUI`, `TranscriptRenderer`, `CoreRenderEvent`, `Style`, and `StreamingTranscriptAppendState` — see `docs/public-api-surface.md` for the full stability catalog.
 
 ## Interaction Primitives
 
@@ -254,15 +260,15 @@ For design rationale and change notes, see `docs/markdown-table-rendering.md`.
 
 ## Event Model
 
-- `RenderMessage`: user / assistant / tool
-- `RenderEvent`:
-  - `messageStart`
-  - `messageUpdate`
-  - `messageEnd`
-  - `toolExecutionStart`
-  - `toolExecutionEnd`
+You adapt your own agent events to `CoreRenderEvent` (via `TranscriptRenderer.applyCore(_:)`), keeping this library independent from your business layer. Nine events cover the full transcript vocabulary:
 
-You can adapt your own agent events to `RenderEvent` and keep this library independent from your business layer.
+- `insert(lines:)` — static lines that never change (e.g. a user prompt)
+- `blockStart(id:)` / `blockUpdate(id:lines:)` / `blockEnd(id:lines:footer:)` / `blockCancel(id:)` — a streaming content block (e.g. an assistant reply). Block events are single-active-block: a `blockStart` while another block is open implicitly finalizes it, and updates/ends/cancels with a mismatched `id` are ignored
+- `thinking(content:isFinal:)` — model reasoning, rendered distinctly from regular assistant text
+- `operationStart(id:header:status:)` / `operationEnd(id:isError:result:)` — tool execution placeholders (`running...` → `done/failed`) with stable slot ordering
+- `notification(text:)` — auto-collapsing notices
+
+`RenderMessage` / `RenderEvent` / `TranscriptRenderer.apply(_:)` are deprecated; new code should use `applyCore(_:)`.
 
 ## Development
 
