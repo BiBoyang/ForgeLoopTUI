@@ -7,7 +7,7 @@ public struct ScreenLayout: Sendable, Equatable {
     public var status: [String]
     public var input: [String]
 
-    /// transcript 中需完整保留的行范围（例如 streaming block）
+    /// Range of transcript lines that must be preserved in full (e.g. a streaming block).
     public var pinnedTranscriptRange: Range<Int>?
 
     public init(

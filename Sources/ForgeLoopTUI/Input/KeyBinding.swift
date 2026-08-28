@@ -1,13 +1,13 @@
 import Foundation
 
-/// 归一化的单次按键,作为 ``KeySequence`` 与 ``KeybindingRegistry`` 的基础元素。
+/// A normalized single key press, the basic element of ``KeySequence`` and ``KeybindingRegistry``.
 ///
-/// 与 ``KeyEvent`` 的差别在于 ``KeyStroke`` 仅描述触发绑定的按键状态;
-/// ``Key/paste(_:)`` 不参与匹配——``KeyResolver`` 会将 paste 直接 passthrough。
-/// 公共初始化器在传入 paste 时会触发 `preconditionFailure`,以防止构造永远不可触发
-/// 的"死绑定"。
+/// Unlike ``KeyEvent``, ``KeyStroke`` only describes the key state that triggers a binding;
+/// ``Key/paste(_:)`` does not participate in matching — ``KeyResolver`` passes paste through directly.
+/// The public initializer triggers `preconditionFailure` when given paste, preventing the
+/// construction of "dead bindings" that can never fire.
 ///
-/// 稳定等级: Provisional。
+/// Stability: Provisional.
 public struct KeyStroke: Sendable, Hashable {
     public let key: Key
     public let modifiers: Modifiers
@@ -20,7 +20,7 @@ public struct KeyStroke: Sendable, Hashable {
         self.modifiers = modifiers
     }
 
-    /// 从 ``KeyEvent`` 构造。Paste 事件返回 nil。
+    /// Creates a stroke from a ``KeyEvent``. Paste events return nil.
     public init?(event: KeyEvent) {
         if case .paste = event.key { return nil }
         self.key = event.key
@@ -36,11 +36,11 @@ public struct KeyStroke: Sendable, Hashable {
     }
 }
 
-/// 一段按键序列。可以是单键也可以是多键 chord。
+/// A sequence of key strokes. May be a single key or a multi-key chord.
 ///
-/// 至少包含一个 ``KeyStroke``;空序列触发断言。
+/// Contains at least one ``KeyStroke``; an empty sequence triggers an assertion.
 ///
-/// 稳定等级: Provisional。
+/// Stability: Provisional.
 public struct KeySequence: Sendable, Hashable {
     public let strokes: [KeyStroke]
 
@@ -63,9 +63,9 @@ extension KeySequence: ExpressibleByArrayLiteral {
     }
 }
 
-/// 把一段 ``KeySequence`` 映射到下游业务的 `Action`。
+/// Maps a ``KeySequence`` to a downstream `Action`.
 ///
-/// 稳定等级: Provisional。
+/// Stability: Provisional.
 public struct KeyBinding<Action: Sendable>: Sendable {
     public let sequence: KeySequence
     public let action: Action
@@ -78,17 +78,17 @@ public struct KeyBinding<Action: Sendable>: Sendable {
     }
 }
 
-/// 注册按键绑定的容器,提供注册、注销与前缀查询。
+/// A container for key bindings, providing registration, unregistration, and prefix queries.
 ///
-/// 注册时禁止冲突:
-/// - 同一序列重复注册抛出 `RegistrationError.duplicate`。
-/// - 某序列同时是另一已注册序列的前缀(或反之),抛出
-///   `RegistrationError.prefixConflict`。
+/// Conflicts are rejected at registration time:
+/// - Re-registering the same sequence throws `RegistrationError.duplicate`.
+/// - If a sequence is a prefix of another registered sequence (or vice versa), throws
+///   `RegistrationError.prefixConflict`.
 ///
-/// 由此约束,匹配结果只有三种(``Match``):`miss`、`prefix`、`exact(Action)`,
-/// ``KeyResolver`` 无需在"立即执行还是等待"间做歧义策略。
+/// Under these constraints, a match has only three outcomes (``Match``): `miss`, `prefix`,
+/// `exact(Action)`, so ``KeyResolver`` never needs an ambiguity policy between "fire now or wait".
 ///
-/// 稳定等级: Provisional。
+/// Stability: Provisional.
 public struct KeybindingRegistry<Action: Sendable>: Sendable {
     public enum RegistrationError: Error, Equatable, Sendable {
         case duplicate
@@ -109,12 +109,12 @@ public struct KeybindingRegistry<Action: Sendable>: Sendable {
     public var isEmpty: Bool { bindings.isEmpty }
     public var count: Int { bindings.count }
 
-    /// 注册一条绑定。
+    /// Registers a binding.
     public mutating func register(_ binding: KeyBinding<Action>) throws {
         try register(binding.sequence, action: binding.action)
     }
 
-    /// 注册指定序列对应的动作。
+    /// Registers the action for the given sequence.
     public mutating func register(_ sequence: KeySequence, action: Action) throws {
         // 防御:即使调用方绕过 ``KeyStroke`` 的公共 init 构造出 paste-bearing stroke,
         // 也不允许注册——否则会留下"可注册但永远不可触发"的死绑定。
@@ -145,18 +145,18 @@ public struct KeybindingRegistry<Action: Sendable>: Sendable {
         bindings[sequence] = action
     }
 
-    /// 注销指定序列。若不存在返回 false。
+    /// Unregisters the given sequence. Returns false if it does not exist.
     @discardableResult
     public mutating func unregister(_ sequence: KeySequence) -> Bool {
         bindings.removeValue(forKey: sequence) != nil
     }
 
-    /// 清空注册表。
+    /// Clears the registry.
     public mutating func removeAll() {
         bindings.removeAll()
     }
 
-    /// 查询当前缓冲序列的匹配状态。
+    /// Queries the match state of the currently buffered sequence.
     public func match(_ strokes: [KeyStroke]) -> Match {
         guard !strokes.isEmpty else { return .miss }
         let sequence = KeySequence(strokes)
@@ -171,7 +171,7 @@ public struct KeybindingRegistry<Action: Sendable>: Sendable {
         return .miss
     }
 
-    /// 已注册绑定的快照(顺序无保证)。
+    /// A snapshot of all registered bindings (order not guaranteed).
     public var allBindings: [(KeySequence, Action)] {
         bindings.map { ($0.key, $0.value) }
     }

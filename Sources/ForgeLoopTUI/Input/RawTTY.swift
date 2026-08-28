@@ -34,16 +34,16 @@ public final class RawTTY: @unchecked Sendable {
         set { lock.withLock { onRestoreFailureStorage = newValue } }
     }
 
-    /// 创建 RawTTY 管理器。
-    /// - Parameter fd: 目标文件描述符，默认 `STDIN_FILENO`。
+    /// Creates a RawTTY manager.
+    /// - Parameter fd: The target file descriptor, defaulting to `STDIN_FILENO`.
     public init(fd: Int32 = STDIN_FILENO) {
         self.fd = fd
     }
 
-    /// 保存当前终端属性并切换到 raw mode。
+    /// Saves the current terminal attributes and switches to raw mode.
     ///
-    /// 若 fd 不是 TTY，抛出 `.notATTY`。
-    /// 若获取/设置属性失败，抛出对应的系统错误。
+    /// Throws `.notATTY` if fd is not a TTY.
+    /// Throws the corresponding system error if getting/setting attributes fails.
     public func enter() throws {
         lock.lock()
         defer { lock.unlock() }
@@ -78,9 +78,10 @@ public final class RawTTY: @unchecked Sendable {
         }
     }
 
-    /// 恢复之前保存的终端属性。
+    /// Restores the previously saved terminal attributes.
     ///
-    /// 若从未调用过 `enter()`，或已经恢复过，此方法无操作（幂等）。
+    /// If `enter()` was never called, or the attributes have already been
+    /// restored, this method does nothing (idempotent).
     public func restore() {
         lock.withLock {
             guard var original = originalTermios else { return }
@@ -96,7 +97,7 @@ public final class RawTTY: @unchecked Sendable {
     }
 }
 
-/// RawTTY 错误类型。
+/// RawTTY error type.
 public enum RawTTYError: Error, Equatable {
     case notATTY(fd: Int32)
     case alreadyEntered
@@ -104,9 +105,10 @@ public enum RawTTYError: Error, Equatable {
     case unableToSetAttributes(errno: Int32)
 }
 
-/// 闭包形式的 RawTTY 生命周期管理。
+/// Closure-based RawTTY lifecycle management.
 ///
-/// `enter()` 在进入闭包前调用，闭包返回后自动调用 `restore()`（包括抛异常时）。
+/// `enter()` is called before entering the closure, and `restore()` is called
+/// automatically after the closure returns (including when it throws).
 public func withRawTTY<T>(fd: Int32 = STDIN_FILENO, body: (RawTTY) throws -> T) throws -> T {
     let tty = RawTTY(fd: fd)
     try tty.enter()

@@ -46,12 +46,13 @@ public struct HybridRenderState: Sendable, Equatable {
 
 // MARK: - Panel Metadata Protocol
 
-/// 面板元数据提供者协议。
+/// A protocol for panel metadata providers.
 ///
-/// AppKit 应用侧实现此协议，Bridge 层通过协议消费元数据，
-/// 无需了解具体来源（窗口标题、绑定、用户偏好等）。
+/// The AppKit app side implements this protocol, and the Bridge layer consumes
+/// metadata through it without needing to know the concrete source
+/// (window title, bindings, user preferences, etc.).
 ///
-/// ## 示例
+/// ## Example
 /// ```swift
 /// struct MyPanelInfo: PanelMetadataProviding {
 ///     var title: String { "My AI Session" }
@@ -94,10 +95,10 @@ public struct PanelMeta: Sendable, Equatable {
     /// Whether the panel should indicate activity (spinner, pulsating dot, etc).
     public var isActive: Bool
 
-    /// 副标题（如模型名、token 数等上下文信息）
+    /// Subtitle (contextual info such as model name, token count, etc.)
     public var subtitle: String?
 
-    /// 辅助标识（如 "Beta"、"Pro" 等标签）
+    /// Accessory badge (labels such as "Beta", "Pro", etc.)
     public var accessoryBadge: String?
 
     public init(
@@ -122,10 +123,11 @@ extension PanelMeta: PanelMetadataProviding {}
 // MARK: - Panel Metadata Bridge
 
 extension PanelMeta {
-    /// 从任意 `PanelMetadataProviding` 提供者创建 `PanelMeta`。
+    /// Creates a `PanelMeta` from any `PanelMetadataProviding` provider.
     ///
-    /// 这是协议到具体值类型的桥接入口，应用侧实现协议后
-    /// 通过此构造器即可生成 Bridge 层可消费的 `PanelMeta`。
+    /// This is the bridging entry point from the protocol to the concrete value type:
+    /// after the app side implements the protocol, this initializer produces a
+    /// `PanelMeta` that the Bridge layer can consume.
     public init<P: PanelMetadataProviding>(_ provider: P) {
         self.init(
             title: provider.title,
@@ -139,7 +141,7 @@ extension PanelMeta {
 }
 
 extension HybridRenderState {
-    /// 从 `PanelMetadataProviding` 提供者更新面板元数据。
+    /// Updates the panel metadata from a `PanelMetadataProviding` provider.
     public mutating func updatePanelMeta<P: PanelMetadataProviding>(from provider: P) {
         panelMeta = PanelMeta(provider)
     }

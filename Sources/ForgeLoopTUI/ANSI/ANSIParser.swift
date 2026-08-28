@@ -1,18 +1,19 @@
-/// ANSI 字节流状态机：将输入文本拆分为普通文本事件与 CSI 控制序列事件。
+/// ANSI byte-stream state machine: splits input text into plain text events and
+/// CSI control-sequence events.
 ///
-/// 设计目标：
-/// - 支持跨 `write()` 调用的分片 CSI 序列拼接。
-/// - 最小化：仅识别文本与 CSI，不引入样式语义。
-/// - 可被 `VirtualTerminal` 等消费者复用。
+/// Design goals:
+/// - Support CSI sequences fragmented across `write()` calls.
+/// - Minimal: recognizes only text and CSI, with no styling semantics.
+/// - Reusable by consumers such as `VirtualTerminal`.
 public struct ANSIParser: Sendable {
     public enum Event: Sendable {
-        /// 一个可见（或控制）字符。
+        /// A visible (or control) character.
         case text(Character)
-        /// 一条已完整解析的 CSI 序列。
+        /// A fully parsed CSI sequence.
         ///
-        /// `intermediates` 为中间字节（0x20–0x2F）的拼接字符串，绝大多数 CSI 序列为空。
-        /// `params` 中 `:` 子参数已按 `;` 同样规则拍平；空参数按 ECMA-48
-        /// 惯例记为 0（0 = 该参数的默认值），由消费方按命令映射具体默认值。
+        /// `intermediates` is the concatenated string of intermediate bytes (0x20–0x2F); empty for the vast majority of CSI sequences.
+        /// In `params`, `:` sub-parameters are flattened by the same rule as `;`; empty parameters are recorded as 0 per the ECMA-48
+        /// convention (0 = the parameter's default value), with concrete defaults mapped per command by the consumer.
         case csi(params: [Int], intermediates: String, command: Character)
     }
 
@@ -30,10 +31,10 @@ public struct ANSIParser: Sendable {
 
     public init() {}
 
-    /// 喂入单个 Unicode scalar，通过 `emit` 回调输出事件。
+    /// Feeds a single Unicode scalar, emitting events via the `emit` callback.
     ///
-    /// 若当前 scalar 属于未完成的 CSI 序列，不会触发任何事件，状态被保留
-    /// 以供下一次 `feed` 调用继续拼接。
+    /// If the current scalar belongs to an unfinished CSI sequence, no event is
+    /// emitted; the state is retained so the next `feed` call can continue assembling it.
     public mutating func feed(_ scalar: Unicode.Scalar, emit: (Event) -> Void) {
         switch state {
         case .ground:

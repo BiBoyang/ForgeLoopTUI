@@ -1,19 +1,23 @@
 import Foundation
 
-/// 输入管道：整合字节缓冲、键值解析、bracketed paste 聚合和 ESC 超时处理。
+/// Input pipeline: integrates byte buffering, key parsing, bracketed paste
+/// aggregation, and ESC timeout handling.
 ///
-/// 对外暴露统一的 `feed(_:) -> [KeyEvent]` 和 `tick() -> [KeyEvent]` 接口，
-/// 屏蔽 `ByteStreamBuffer` 和 `KeyParser` 的细节。
+/// Exposes a unified `feed(_:) -> [KeyEvent]` and `tick() -> [KeyEvent]`
+/// interface, hiding the details of `ByteStreamBuffer` and `KeyParser`.
 ///
 /// ## Bracketed paste
-/// 检测到 `ESC[200~` 进入 paste 模式，后续所有 `InputUnit` 被聚合为纯文本。
-/// 检测到 `ESC[201~` 退出并输出 `.paste(String)`。
+/// Detecting `ESC[200~` enters paste mode; all subsequent `InputUnit`s are
+/// aggregated as plain text. Detecting `ESC[201~` exits paste mode and emits
+/// `.paste(String)`.
 ///
-/// ## ESC/Alt 歧义
-/// 单独按 ESC 时终端只发送 0x1B，`ByteStreamBuffer` 会将其保留为不完整序列。
-/// `InputPipeline` 在检测到不完整 ESC 时启动超时；若超时前无后续字节到达，
-/// 调用 `tick()` 会触发 `flush()` 将 ESC 作为 `.escape` 输出。
-/// 若后续字节在窗口内到达，则正常解析为 Alt+字符 或 CSI。
+/// ## ESC/Alt ambiguity
+/// When ESC is pressed alone, the terminal only sends 0x1B, which
+/// `ByteStreamBuffer` retains as an incomplete sequence. `InputPipeline`
+/// starts a timeout when it detects an incomplete ESC; if no further bytes
+/// arrive before the timeout, calling `tick()` triggers `flush()` to emit the
+/// ESC as `.escape`. If subsequent bytes arrive within the window, the
+/// sequence is parsed normally as Alt+character or CSI.
 public final class InputPipeline: @unchecked Sendable {
     private let lock = NSLock()
     private let buffer = ByteStreamBuffer()
@@ -32,7 +36,7 @@ public final class InputPipeline: @unchecked Sendable {
         self.escapeTimeoutNanoseconds = escapeTimeoutNanoseconds
     }
 
-    /// 喂入原始字节，返回已解析的按键事件。
+    /// Feeds raw bytes and returns the parsed key events.
     public func feed(_ bytes: [UInt8]) -> [KeyEvent] {
         lock.lock()
         defer { lock.unlock() }
@@ -43,15 +47,16 @@ public final class InputPipeline: @unchecked Sendable {
         return events
     }
 
-    /// 检查超时。若有不完整 ESC 且已超时，触发 flush 并返回对应事件。
+    /// Checks the timeout. If there is an incomplete ESC that has timed out,
+    /// triggers a flush and returns the corresponding events.
     public func tick() -> [KeyEvent] {
         lock.lock()
         defer { lock.unlock() }
         return checkTimeoutLocked()
     }
 
-    /// 强制清空管道。未闭合的 paste 会被输出为 `.paste(String)`；
-    /// 不完整的 ESC 会被 flush 为 `.escape`。
+    /// Forces the pipeline to drain. An unclosed paste is emitted as
+    /// `.paste(String)`; an incomplete ESC is flushed as `.escape`.
     public func flush() -> [KeyEvent] {
         lock.lock()
         defer { lock.unlock() }

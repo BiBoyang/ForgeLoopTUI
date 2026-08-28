@@ -107,7 +107,7 @@ public enum Style {
     }
 }
 
-/// 结构化样式规格，供 `Style` 内部使用。
+/// Structured style specification, for `Style`'s internal use.
 public struct StyleSpec: Sendable, Equatable {
     public var bold: Bool = false
     public var dim: Bool = false

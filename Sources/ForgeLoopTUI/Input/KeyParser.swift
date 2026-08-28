@@ -1,16 +1,16 @@
-/// 将 `InputUnit` 序列解析为规范化 `KeyEvent`。
+/// Parses a sequence of `InputUnit` values into normalized `KeyEvent`s.
 ///
-/// 支持的输入来源：
-/// - CSI 序列：方向键、功能键、Home/End、PageUp/PageDown、Insert/Delete
-/// - SS3 序列：ESC O A/B/C/D/H/F/P/Q/R/S（常见于 xterm Application Keypad）
-/// - Alt+字符：ESC 后接普通字符
-/// - 控制字符：Ctrl+A-Z（0x01-0x1A）、Tab、Enter、Backspace、Escape
+/// Supported input sources:
+/// - CSI sequences: arrow keys, function keys, Home/End, PageUp/PageDown, Insert/Delete
+/// - SS3 sequences: ESC O A/B/C/D/H/F/P/Q/R/S (common in xterm Application Keypad)
+/// - Alt+character: ESC followed by a regular character
+/// - Control characters: Ctrl+A-Z (0x01-0x1A), Tab, Enter, Backspace, Escape
 ///
-/// 未知或无法映射的序列会被静默丢弃。
+/// Unknown or unmappable sequences are silently discarded.
 public struct KeyParser: Sendable {
     public init() {}
 
-    /// 解析一批 `InputUnit`，返回对应的 `KeyEvent` 序列。
+    /// Parses a batch of `InputUnit`s and returns the corresponding `KeyEvent` sequence.
     public func parse(_ units: [InputUnit]) -> [KeyEvent] {
         var events: [KeyEvent] = []
         var i = 0

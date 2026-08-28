@@ -1,14 +1,14 @@
 import Foundation
 
-/// 通用渲染事件（去 chat 语义）。
+/// Generic render event (chat-semantics-free).
 ///
-/// 用于 `ForgeLoopTUI` Core 层，不绑定任何业务模型。
-/// Chat 语义通过 Adapter 层注入。
+/// Used by the `ForgeLoopTUI` Core layer; not bound to any business model.
+/// Chat semantics are injected through the Adapter layer.
 public enum CoreRenderEvent: Sendable, Equatable {
-    /// 插入静态文本行（不可更新）。
+    /// Insert static text lines (not updatable).
     case insert(lines: [String])
 
-    /// 开始一个可更新的内容块。
+    /// Begin an updatable content block.
     ///
     /// Block events are single-active-block: only one block may be open at a
     /// time. A `blockStart` arriving while another block is still open
@@ -16,40 +16,41 @@ public enum CoreRenderEvent: Sendable, Equatable {
     /// as-is) before the new block begins.
     case blockStart(id: String)
 
-    /// 更新内容块的行。
+    /// Update the lines of a content block.
     ///
     /// The `id` must match the currently open block's id; mismatched updates
     /// are ignored. An update with no preceding `blockStart` implicitly opens
     /// a block adopting that `id`.
     case blockUpdate(id: String, lines: [String])
 
-    /// 结束内容块，追加可选 footer（如错误消息）。
+    /// End a content block, appending an optional footer (e.g. an error message).
     ///
     /// The `id` must match the currently open block's id; mismatched ends are
     /// ignored.
     case blockEnd(id: String, lines: [String], footer: String?)
 
-    /// 取消进行中的内容块（用户中断等）。
-    /// 与 `blockEnd` 不同：流式内容被丢弃，仅保留取消标记。
+    /// Cancel an in-progress content block (e.g. user interruption).
+    /// Unlike `blockEnd`: the streamed content is discarded; only the
+    /// cancellation marker is kept.
     ///
     /// The `id` must match the currently open block's id; mismatched cancels
     /// are ignored.
     case blockCancel(id: String)
 
-    /// 模型思考/推理内容（与普通 assistant 文本区分渲染）。
-    /// - content: 当前累积的思考文本
-    /// - isFinal: 是否为最终块（thinking 已结束）
+    /// Model thinking/reasoning content (rendered distinctly from regular assistant text).
+    /// - content: the currently accumulated thinking text
+    /// - isFinal: whether this is the final chunk (thinking has ended)
     case thinking(content: String, isFinal: Bool)
 
-    /// 开始一个追踪中的操作。
-    /// - header: 操作标题行（如 "● toolName(args)"）
-    /// - status: 初始状态行（如 "⎿ running..."）
+    /// Begin a tracked operation.
+    /// - header: the operation title line (e.g. "● toolName(args)")
+    /// - status: the initial status line (e.g. "⎿ running...")
     case operationStart(id: String, header: String, status: String)
 
-    /// 结束操作，替换状态行为结果。
-    /// - result: 可选结果文本（如 summary）
+    /// End an operation, replacing the status line with the result.
+    /// - result: optional result text (e.g. a summary)
     case operationEnd(id: String, isError: Bool, result: String?)
 
-    /// 通知消息（自动折叠）。
+    /// Notification message (auto-collapsed).
     case notification(text: String)
 }

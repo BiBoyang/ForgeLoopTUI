@@ -1,15 +1,16 @@
 import Foundation
 
-/// TUI 渲染诊断事件，通过 `TUI.diagnosticsHandler` 可选回调发出。
-/// 默认关闭，零性能侵入。
+/// TUI rendering diagnostic event, emitted via the optional
+/// `TUI.diagnosticsHandler` callback. Disabled by default, with zero
+/// performance intrusion.
 public enum TUIRenderDiagnostic: Sendable {
-    /// 触发了全量重绘（清屏+重写），包含触发原因。
+    /// A full redraw (clear screen + rewrite) was triggered; includes the reason.
     case fullRedraw(reason: String)
-    /// 使用了增量 diff 渲染。
+    /// Incremental diff rendering was used.
     case diff(linesChanged: Int, physicalRows: Int)
-    /// live budget 沉降发生。
+    /// A live budget settlement occurred.
     case budgetSettled(linesSettled: Int)
-    /// 触发了 committed 纯追加快速路径。
+    /// The committed pure-append fast path was triggered.
     case fastPath(appendedLines: Int)
 }
 
@@ -24,17 +25,22 @@ private struct WriterTerminal: Terminal {
     }
 }
 
-/// `cursorPlacement` 渲染时,光标的硬件定位策略。
+/// Hardware cursor positioning strategy used by `cursorPlacement` rendering.
 ///
-/// - ``relative``: 用相对位移 `ESC[nA` / `ESC[nD` / `ESC[nC` 把光标从内容末尾
-///   移动到目标。实现简单,但在 wrap 行 / IME 候选窗等场景下,硬件实际位置
-///   会与逻辑位移产生差距。**这是默认值,保持现有行为**。
-/// - ``marker``: 基于物理行计算的精确路径——上下用 `ESC[nA`,水平用
-///   `ESC[<col>G`(CHA 绝对列)定位。对 wrap / 中文输入法候选窗等场景更可靠。
+/// - ``relative``: moves the cursor from the end of the content to the target
+///   using relative displacement `ESC[nA` / `ESC[nD` / `ESC[nC`. Simple to
+///   implement, but in scenarios such as wrapped lines or IME candidate
+///   windows, the hardware's actual position can diverge from the logical
+///   displacement. **This is the default and preserves existing behavior**.
+/// - ``marker``: a precise path based on physical-row computation — vertical
+///   movement uses `ESC[nA`; horizontal positioning uses `ESC[<col>G` (CHA
+///   absolute column). More reliable for scenarios such as wrapping or IME
+///   candidate windows.
 ///
-/// 非 TTY 输出永远不发任何 ANSI 序列;mode 仅在 `isTTY == true` 时生效。
+/// Non-TTY output never emits any ANSI sequences; the mode only takes effect
+/// when `isTTY == true`.
 ///
-/// 稳定等级: Provisional。
+/// Stability: Provisional.
 public enum CursorPositioningMode: Sendable, Equatable {
     case relative
     case marker
@@ -50,7 +56,8 @@ public final class TUI: @unchecked Sendable {
     public private(set) var terminalHeight: Int
     private let terminal: Terminal
 
-    /// 可选诊断回调，默认 nil（零开销）。设置后，渲染关键决策会触发回调。
+    /// Optional diagnostics callback; defaults to nil (zero overhead). Once
+    /// set, key rendering decisions trigger the callback.
     ///
     /// Access is lock-protected. The handler is invoked during a render pass
     /// while the render lock is held, so it must not call back into `TUI`
@@ -148,8 +155,9 @@ public final class TUI: @unchecked Sendable {
         }
     }
 
-    /// 标记终端缓存状态已失效（如 resize、外部清屏等），强制重算所有物理行缓存。
-    /// 仅重算缓存，不修改终端宽高；幂等。
+    /// Marks the cached terminal state as invalid (e.g. resize, external screen
+    /// clear), forcing recomputation of all physical-row caches.
+    /// Only recomputes caches; does not modify terminal width/height. Idempotent.
     public func invalidate() {
         lock.withLock {
             // 仅重算物理行缓存，不修改宽高（避免并发场景下覆盖并发更新的尺寸值）
@@ -260,14 +268,17 @@ public final class TUI: @unchecked Sendable {
 
     // MARK: - Commit / Live Rendering
 
-    /// 两区域渲染：稳定区（committed）只追加，可变区（live）支持 diff。
+    /// Two-region rendering: the stable region (committed) is append-only;
+    /// the mutable region (live) supports diffing.
     ///
-    /// 与 `requestRender(lines:)` 相比，此 API 将帧显式分割为 committed 和 live
-    /// 两部分，使运行时只需要对 live 区做 diff，避免对稳定历史行进行不必要的
-    /// 比较和重绘。
+    /// Compared with `requestRender(lines:)`, this API explicitly splits the
+    /// frame into committed and live parts, so the runtime only needs to diff
+    /// the live region, avoiding unnecessary comparison and repainting of
+    /// stable history lines.
     ///
-    /// 若构造 `TUI` 时配置了 `liveBudget`,该方法会在 diff 前调用 ``applyLiveBudget(committed:live:)``
-    /// 把超出预算的 live 头部沉降到 committed。
+    /// If `liveBudget` was configured when constructing the `TUI`, this method
+    /// calls ``applyLiveBudget(committed:live:)`` before diffing to settle the
+    /// over-budget head of live into committed.
     public func render(committed: [String], live: [String], cursorOffset: Int? = nil) {
         renderLock.lock()
         defer { renderLock.unlock() }
@@ -277,18 +288,24 @@ public final class TUI: @unchecked Sendable {
         renderEffective(committed: effectiveCommitted, live: effectiveLive, cursorOffset: cursorOffset)
     }
 
-    /// 两区域渲染 + 二维光标锚点（cursorPlacement）。
+    /// Two-region rendering + 2D cursor anchoring (cursorPlacement).
     ///
-    /// `cursorPlacement.up` 表示光标从 live 末行向上的行数偏移，
-    /// `cursorPlacement.offset` 表示光标在目标行内从该行末尾向左的列偏移。
-    /// 当 `up = 0` 时与 `render(committed:live:cursorOffset:)` 行为完全一致。
+    /// `cursorPlacement.up` is the row offset of the cursor upward from the
+    /// last live line; `cursorPlacement.offset` is the column offset of the
+    /// cursor leftward from the end of the target row.
+    /// When `up = 0`, behavior is identical to
+    /// `render(committed:live:cursorOffset:)`.
     ///
-    /// 实现策略：先用 `cursorOffset = 0` 把内容渲染到位（终端光标停在最后一行末尾），
-    /// 再额外发出 `ESC[<up>A` 和水平调整序列把光标移到目标位置；下一帧渲染前
-    /// 会把这次位移自动 undo，保证内部 diff/快路径的相对位移计算仍然正确。
+    /// Implementation strategy: first render the content with `cursorOffset = 0`
+    /// (the terminal cursor ends up at the end of the last line), then emit
+    /// `ESC[<up>A` and a horizontal adjustment sequence to move the cursor to
+    /// the target position; before the next frame renders, this displacement
+    /// is automatically undone so the internal diff/fast-path relative-
+    /// displacement math stays correct.
     ///
-    /// 与 `render(committed:live:cursorOffset:)` 走同一个 ``applyLiveBudget(committed:live:)``
-    /// 入口,确保两条渲染路径下沉降语义完全一致。
+    /// Shares the same ``applyLiveBudget(committed:live:)`` entry point as
+    /// `render(committed:live:cursorOffset:)`, ensuring the settlement
+    /// semantics of both rendering paths are identical.
     public func render(committed: [String], live: [String], cursorPlacement: CursorPlacement) {
         renderLock.lock()
         defer { renderLock.unlock() }

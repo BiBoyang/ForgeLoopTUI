@@ -1,20 +1,20 @@
 import Foundation
 
-/// 字节流缓冲器：将分片到达的字节流解析为结构化的输入单元。
+/// A byte-stream buffer that parses incrementally arriving bytes into structured input units.
 ///
-/// 支持跨 `feed()` 调用的不完整序列拼接：
-/// - CSI 控制序列（`ESC[` ... final）
-/// - UTF-8 多字节字符
+/// Supports reassembling sequences split across `feed()` calls:
+/// - CSI control sequences (`ESC[` ... final)
+/// - UTF-8 multi-byte characters
 ///
-/// 错误恢复策略：非法字节不会阻塞后续输入，立即消费 1 字节输出 `.byte`，
-/// 循环继续解析剩余数据。
+/// Error recovery: invalid bytes never block subsequent input; 1 byte is consumed immediately
+/// and emitted as `.byte`, then parsing continues with the remaining data.
 ///
-/// 用法：
+/// Usage:
 /// ```swift
 /// let buf = ByteStreamBuffer()
-/// let units1 = buf.feed([0x1B])        // 空，ESC 不完整
+/// let units1 = buf.feed([0x1B])        // empty; ESC is incomplete
 /// let units2 = buf.feed([0x5B, 0x41])  // [CSI(params: [], command: "A")]
-/// let units3 = buf.flush()             // 清空剩余缓冲
+/// let units3 = buf.flush()             // drains the remaining buffer
 /// ```
 public final class ByteStreamBuffer: @unchecked Sendable {
     private let lock = NSLock()
@@ -22,11 +22,11 @@ public final class ByteStreamBuffer: @unchecked Sendable {
 
     public init() {}
 
-    /// 喂入一个字节块，返回已完整解析的输入单元。
+    /// Feeds a chunk of bytes and returns the fully parsed input units.
     ///
-    /// 不完整的 ESC 序列或 UTF-8 字符会被保留在内部缓冲中，
-    /// 等待下一次 `feed` 或 `flush` 处理。
-    /// 非法字节立即被消费并输出为 `.byte`，不会阻塞后续合法输入。
+    /// Incomplete ESC sequences or UTF-8 characters are kept in the internal buffer,
+    /// awaiting the next `feed` or `flush`.
+    /// Invalid bytes are consumed immediately and emitted as `.byte`; they never block later valid input.
     public func feed(_ bytes: [UInt8]) -> [InputUnit] {
         lock.lock()
         defer { lock.unlock() }
@@ -34,10 +34,10 @@ public final class ByteStreamBuffer: @unchecked Sendable {
         return parseComplete()
     }
 
-    /// 强制清空当前缓冲，将所有剩余字节尽可能解析后返回。
+    /// Forces the current buffer to drain, parsing all remaining bytes as far as possible.
     ///
-    /// 不完整的 UTF-8 序列会被替换为 `\u{FFFD}`（�），
-    /// 不完整的 ESC 前缀会被当作普通字节输出。
+    /// Incomplete UTF-8 sequences are replaced with `\u{FFFD}` (),
+    /// incomplete ESC prefixes are emitted as plain bytes.
     public func flush() -> [InputUnit] {
         lock.lock()
         defer { lock.unlock() }
@@ -46,7 +46,7 @@ public final class ByteStreamBuffer: @unchecked Sendable {
         return units
     }
 
-    /// 当前缓冲是否以不完整 ESC 开头（用于 ESC/Alt 歧义 timer）。
+    /// Whether the buffer currently starts with an incomplete ESC (used by the ESC/Alt disambiguation timer).
     public var isPendingEscape: Bool {
         lock.lock(); defer { lock.unlock() }
         return buffer.first == 0x1B
@@ -227,15 +227,15 @@ public final class ByteStreamBuffer: @unchecked Sendable {
     }
 }
 
-/// 输入单元：字节流解析后的结构化事件。
+/// An input unit: a structured event produced by byte-stream parsing.
 public enum InputUnit: Sendable, Equatable {
-    /// 可打印字符（含 UTF-8 多字节解析结果）。
+    /// A printable character (including the result of UTF-8 multi-byte parsing).
     case character(Character)
-    /// CSI 控制序列。`params` 的空参数记 0（默认值语义）、`:` 子参数已拍平，
-    /// 与 `ANSIParser.Event.csi` 规则一致。
+    /// A CSI control sequence. Empty parameters in `params` are recorded as 0 (default-value semantics)
+    /// and `:` sub-parameters are flattened, matching the rules of `ANSIParser.Event.csi`.
     case csi(params: [Int], command: Character)
-    /// 非 CSI 的 Escape 序列（如 ESC O）。
+    /// A non-CSI escape sequence (e.g. ESC O).
     case escape(command: Character)
-    /// 无法解析的原始字节（非法输入或 `flush()` 兜底）。
+    /// An unparseable raw byte (invalid input or a `flush()` fallback).
     case byte(UInt8)
 }

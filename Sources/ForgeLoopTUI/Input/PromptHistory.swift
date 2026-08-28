@@ -1,4 +1,4 @@
-/// 最小输入历史，支持上下键导航。
+/// Minimal input history with up/down arrow navigation.
 public struct PromptHistory: Sendable, Equatable {
     private var entries: [String] = []
     private var index: Int = -1  // -1 表示当前编辑态

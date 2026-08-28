@@ -32,17 +32,17 @@ public final class InputReader: @unchecked Sendable {
     private var tickSource: DispatchSourceTimer?
     private var isRunning = false
 
-    /// 当前是否处于运行态。
+    /// Whether the reader is currently running.
     public var running: Bool {
         lock.withLock { isRunning }
     }
 
-    /// 创建读取器（不立即进入 raw mode）。
+    /// Creates a reader (does not enter raw mode immediately).
     /// - Parameters:
-    ///   - tty: `RawTTY` 实例，默认 `STDIN_FILENO`。
-    ///   - pipeline: `InputPipeline` 实例。
-    ///   - queue: 事件调度队列，默认 `.global(qos: .userInteractive)`。
-    ///   - onEvent: 按键事件回调。
+    ///   - tty: A `RawTTY` instance, defaulting to `STDIN_FILENO`.
+    ///   - pipeline: An `InputPipeline` instance.
+    ///   - queue: The event dispatch queue, defaulting to `.global(qos: .userInteractive)`.
+    ///   - onEvent: Callback for key events.
     public init(
         tty: RawTTY = RawTTY(),
         pipeline: InputPipeline = InputPipeline(),
@@ -55,9 +55,9 @@ public final class InputReader: @unchecked Sendable {
         self.onEvent = onEvent
     }
 
-    /// 进入 raw mode 并启动 stdin 监听和 tick 定时器。
-    /// 幂等：若已在运行，直接返回。
-    /// - Throws: `RawTTYError` 若进入 raw mode 失败。
+    /// Enters raw mode and starts the stdin listener and tick timer.
+    /// Idempotent: returns immediately if already running.
+    /// - Throws: `RawTTYError` if entering raw mode fails.
     public func start() throws {
         lock.lock()
         defer { lock.unlock() }
@@ -98,8 +98,8 @@ public final class InputReader: @unchecked Sendable {
         isRunning = true
     }
 
-    /// 停止监听并恢复终端属性。
-    /// 幂等：若未运行，无操作。
+    /// Stops listening and restores the terminal attributes.
+    /// Idempotent: does nothing if not running.
     public func stop() {
         lock.lock()
         defer { lock.unlock() }

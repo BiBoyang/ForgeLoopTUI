@@ -1,33 +1,33 @@
 import Foundation
 
-/// 经 ``KeyResolver`` 解析后的输出。
+/// The output produced by ``KeyResolver``.
 ///
-/// - ``action(_:)``: 一段绑定的完整命令匹配成功。
-/// - ``passthrough(_:)``: 该事件不属于任何绑定,应交回上层(例如插入文本)。
+/// - ``action(_:)``: a bound command was matched in full.
+/// - ``passthrough(_:)``: the event belongs to no binding and should be handed back to the caller (e.g. to insert text).
 public enum ResolvedKey<Action: Sendable>: Sendable {
     case action(Action)
     case passthrough(KeyEvent)
 }
 
-/// 有状态的按键序列解析器。
+/// A stateful key-sequence resolver.
 ///
-/// 接受 ``KeyEvent``,根据注入的 ``KeybindingRegistry`` 输出 ``ResolvedKey``。
-/// 维护一个 pending 缓冲区以支持多键 chord:在命中前缀时进入 pending 态,直到
-/// (a) 后续输入凑齐 exact 匹配,(b) 后续输入打破匹配,或 (c) 超时。
+/// Accepts ``KeyEvent`` values and emits ``ResolvedKey`` based on the injected ``KeybindingRegistry``.
+/// Maintains a pending buffer to support multi-key chords: on a prefix hit it enters the pending
+/// state until (a) later input completes an exact match, (b) later input breaks the match, or (c) timeout.
 ///
-/// 行为细节:
-/// - 一旦超时,缓冲事件按顺序作为 passthrough 释放。
-/// - 若 `pending + current` 不匹配但 `current` 单独是 prefix/exact,则把已 pending
-///   事件 passthrough,然后用当前事件重新开始匹配。
-/// - ``Key/paste(_:)`` 永远 passthrough,先把 pending 释放再透传 paste。
+/// Behavioral details:
+/// - On timeout, buffered events are released in order as passthrough.
+/// - If `pending + current` does not match but `current` alone is a prefix/exact match, the pending
+///   events are passed through and matching restarts from the current event.
+/// - ``Key/paste(_:)`` always passes through: pending events are released first, then paste is forwarded.
 ///
-/// 并发约定:实例内部维护可变状态,**非 Sendable**。
-/// 调用方需保证所有 `feed` / `tick` / `flush` / `replaceRegistry` 调用串行进行
-/// (例如全部在同一个 actor 或同一线程上)。库不提供跨 actor 共享。
+/// Concurrency: instances keep mutable state and are **not Sendable**.
+/// Callers must serialize all `feed` / `tick` / `flush` / `replaceRegistry` calls
+/// (e.g. on a single actor or thread). The library does not support cross-actor sharing.
 ///
-/// 稳定等级: Provisional。
+/// Stability: Provisional.
 public final class KeyResolver<Action: Sendable> {
-    /// 默认 chord 超时(纳秒),约 500 毫秒。
+    /// The default chord timeout (nanoseconds), about 500 milliseconds.
     public static var defaultTimeoutNanoseconds: UInt64 { 500_000_000 }
 
     private let clock: InputClock
@@ -48,14 +48,14 @@ public final class KeyResolver<Action: Sendable> {
         self.timeout = timeoutNanoseconds ?? Self.defaultTimeoutNanoseconds
     }
 
-    /// 替换底层注册表。当前 pending 会被释放为 passthrough。
+    /// Replaces the underlying registry. Any current pending events are released as passthrough.
     public func replaceRegistry(_ registry: KeybindingRegistry<Action>) -> [ResolvedKey<Action>] {
         let flushed = flushPending()
         self.registry = registry
         return flushed
     }
 
-    /// 喂入一个 ``KeyEvent``。返回零或多个解析结果。
+    /// Feeds a ``KeyEvent``. Returns zero or more resolved results.
     public func feed(_ event: KeyEvent) -> [ResolvedKey<Action>] {
         var output = flushIfExpired()
 
@@ -108,17 +108,17 @@ public final class KeyResolver<Action: Sendable> {
         }
     }
 
-    /// 由外部驱动的时钟钩子(例如事件循环空转时)。处理超时回退。
+    /// A clock hook driven externally (e.g. when the event loop is idle). Handles timeout fallback.
     public func tick() -> [ResolvedKey<Action>] {
         flushIfExpired()
     }
 
-    /// 强制释放 pending 缓冲(忽略超时窗口)。
+    /// Forces the pending buffer to be released (ignoring the timeout window).
     public func flush() -> [ResolvedKey<Action>] {
         flushPending()
     }
 
-    /// 是否存在等待延续的 chord 前缀。
+    /// Whether a chord prefix is awaiting continuation.
     public var hasPending: Bool { !pendingStrokes.isEmpty }
 
     // MARK: - Private

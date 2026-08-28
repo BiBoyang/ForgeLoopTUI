@@ -1,6 +1,6 @@
 import Foundation
 
-/// 控制 TranscriptRenderer 摘要截断与通知上限的配置。
+/// Configuration controlling TranscriptRenderer's summary truncation and notification limits.
 public struct TranscriptRenderOptions: Sendable, Equatable {
     public var maxSummaryChars: Int
     public var maxSummaryLines: Int

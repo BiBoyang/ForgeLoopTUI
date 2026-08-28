@@ -1,12 +1,16 @@
 import Foundation
 
-/// 统一渲染调度器：16ms 合帧 + 关键场景即时刷新。
+/// Unified render scheduler: 16ms frame coalescing + immediate flush for
+/// critical scenarios.
 ///
-/// 通过 `submit(frame:priority:)` 提交帧：
-/// - `.normal`：加入合帧队列，当前 tick 内多次提交只保留最后一帧。
-/// - `.immediate`：立即渲染当前最新帧，不等待 tick。
+/// Frames are submitted via `submit(frame:priority:)`:
+/// - `.normal`: joins the coalescing queue; multiple submissions within the
+///   same tick keep only the last frame.
+/// - `.immediate`: renders the latest frame immediately, without waiting for
+///   a tick.
 ///
-/// timer 在每个 tick 触发 flush；flush 后若队列为空则停止 timer，避免空转。
+/// The timer triggers a flush on each tick; after a flush, if the queue is
+/// empty the timer stops to avoid spinning idle.
 ///
 /// Concurrency contract: `render` invocations are **not** serialized by this
 /// class. The closure runs on the submitting caller's context for `.immediate`
@@ -35,7 +39,8 @@ public final class RenderLoop: @unchecked Sendable {
         self.render = render
     }
 
-    /// 提交一帧。`.normal` 进入合帧队列；`.immediate` 立即渲染。
+    /// Submits a frame. `.normal` enters the coalescing queue; `.immediate`
+    /// renders immediately.
     public func submit(frame: [String], priority: Priority = .normal) {
         lock.withLock {
             guard !isStopped else { return }
@@ -49,8 +54,8 @@ public final class RenderLoop: @unchecked Sendable {
         }
     }
 
-    /// 停止调度器，取消 timer，丢弃 pending frame。
-    /// 停止后再次调用 `submit` 无效果。
+    /// Stops the scheduler, cancels the timer, and discards the pending frame.
+    /// Calling `submit` again after stopping has no effect.
     public func stop() {
         let task: Task<Void, Never>? = lock.withLock {
             let current = timerTask

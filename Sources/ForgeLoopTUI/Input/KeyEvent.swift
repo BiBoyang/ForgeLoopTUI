@@ -1,8 +1,10 @@
-/// 规范化按键事件模型，屏蔽终端输入序列的差异。
+/// Normalized key event model that hides differences between terminal input
+/// sequences.
 ///
-/// `KeyParser` 将 `ByteStreamBuffer` 输出的 `InputUnit` 转换为 `KeyEvent`。
-/// 所有修饰符（Shift / Alt / Ctrl）在 `KeyEvent` 层面统一表示，
-/// 不暴露底层是 CSI、SS3 还是单字节控制字符。
+/// `KeyParser` converts the `InputUnit`s produced by `ByteStreamBuffer` into
+/// `KeyEvent`s. All modifiers (Shift / Alt / Ctrl) are represented uniformly
+/// at the `KeyEvent` level, without exposing whether the underlying sequence
+/// was CSI, SS3, or a single-byte control character.
 public struct KeyEvent: Sendable, Equatable {
     public var key: Key
     public var modifiers: Modifiers
@@ -13,10 +15,10 @@ public struct KeyEvent: Sendable, Equatable {
     }
 }
 
-/// 可识别的按键类型。
+/// Recognizable key types.
 public enum Key: Sendable, Hashable {
     case character(Character)
-    /// Bracketed paste 聚合内容。
+    /// Aggregated content of a bracketed paste.
     case paste(String)
     case up, down, left, right
     case home, end, pageUp, pageDown
@@ -25,7 +27,7 @@ public enum Key: Sendable, Hashable {
     case f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12
 }
 
-/// 修饰符集合。
+/// A set of modifiers.
 public struct Modifiers: OptionSet, Sendable, Hashable {
     public let rawValue: UInt8
     public static let shift = Modifiers(rawValue: 1 << 0)

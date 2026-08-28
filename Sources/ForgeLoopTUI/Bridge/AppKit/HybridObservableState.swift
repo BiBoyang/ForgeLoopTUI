@@ -1,33 +1,35 @@
 import Foundation
 import Observation
 
-/// 可观察的 HybridRenderState 包装器。
+/// An observable wrapper around HybridRenderState.
 ///
-/// 使用 macOS 14+ `@Observable` 宏提供响应式状态追踪。
-/// AppKit/SwiftUI 视图可通过标准的观察模式自动响应状态变化。
+/// Uses the macOS 14+ `@Observable` macro to provide reactive state tracking.
+/// AppKit/SwiftUI views can respond automatically to state changes through
+/// the standard observation pattern.
 ///
-/// ## 使用方式（AppKit）
+/// ## Usage (AppKit)
 /// ```swift
 /// let state = HybridObservableState()
 /// withObservationTracking {
-///     _ = state.transcriptLines  // 触发追踪
+///     _ = state.transcriptLines  // start tracking
 /// } onChange: {
-///     // 状态变化时更新 UI
+///     // Update the UI when the state changes
 /// }
 /// ```
 ///
-/// ## 线程语义
-/// - 本类型标记为 `@MainActor`，应在主线程创建与修改。
-/// - 作为 UI 状态容器，不保证跨 actor 传递安全；不声明普通 `Sendable`。
+/// ## Threading Semantics
+/// - This type is marked `@MainActor` and should be created and mutated on the main thread.
+/// - As a UI state container, it is not safe to pass across actors; it deliberately
+///   does not declare plain `Sendable`.
 @available(macOS 14, *)
 @Observable
 @MainActor
 public final class HybridObservableState {
 
-    /// 底层 HybridRenderState
+    /// The underlying HybridRenderState
     public private(set) var state: HybridRenderState
 
-    /// 便捷计算属性：用于 Observation 追踪
+    /// Convenience computed property used for Observation tracking
     public var transcriptLines: [String] { state.transcriptLines }
     public var inputLines: [String] { state.inputLines }
     public var statusLines: [String] { state.statusLines }
@@ -40,12 +42,12 @@ public final class HybridObservableState {
         self.state = initialState
     }
 
-    /// 整体替换状态（触发所有观察者）
+    /// Replaces the entire state (notifies all observers)
     public func update(_ newState: HybridRenderState) {
         state = newState
     }
 
-    /// 按字段更新（细粒度，仅触发变化字段的观察者）
+    /// Per-field updates (fine-grained; only notifies observers of the changed field)
     public func updateTranscript(_ lines: [String]) { state.transcriptLines = lines }
     public func updateInput(_ lines: [String]) { state.inputLines = lines }
     public func updateStatus(_ lines: [String]) { state.statusLines = lines }

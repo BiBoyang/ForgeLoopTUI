@@ -1,22 +1,22 @@
 import Foundation
 
-/// SGR（Select Graphic Rendition）状态模型。
+/// SGR (Select Graphic Rendition) state model.
 ///
-/// 支持的代码：
+/// Supported codes:
 /// - `0`       reset
 /// - `1`       bold
 /// - `2`       dim
-/// - `22`      normal intensity（取消 bold / dim）
-/// - `30-37`   标准前景色
-/// - `39`      默认前景色
-/// - `40-47`   标准背景色
-/// - `49`      默认背景色
-/// - `90-97`   高亮前景色
-/// - `100-107` 高亮背景色
-/// - `38;5;n` / `48;5;n`     256 色（indexed）
-/// - `38;2;r;g;b` / `48;2;r;g;b`  24-bit True Color（rgb）
+/// - `22`      normal intensity (cancels bold / dim)
+/// - `30-37`   standard foreground colors
+/// - `39`      default foreground color
+/// - `40-47`   standard background colors
+/// - `49`      default background color
+/// - `90-97`   bright foreground colors
+/// - `100-107` bright background colors
+/// - `38;5;n` / `48;5;n`     256 colors (indexed)
+/// - `38;2;r;g;b` / `48;2;r;g;b`  24-bit True Color (rgb)
 ///
-/// 安全语义：扩展颜色参数不完整时不修改已有状态。
+/// Safety semantics: incomplete extended-color parameters leave the existing state unchanged.
 public struct SGRState: Sendable, Equatable {
     public var bold: Bool = false
     public var dim: Bool = false
@@ -25,7 +25,7 @@ public struct SGRState: Sendable, Equatable {
 
     public init() {}
 
-    /// 应用一组 SGR 参数码。
+    /// Applies a set of SGR parameter codes.
     public mutating func apply(_ params: [Int]) {
         guard !params.isEmpty else {
             reset()
@@ -102,13 +102,13 @@ public struct SGRState: Sendable, Equatable {
 }
 
 public enum Color: Sendable, Equatable {
-    /// 标准 8 色（0–7）。
+    /// Standard 8 colors (0–7).
     case standard(Int)
-    /// 高亮 8 色（0–7）。
+    /// Bright 8 colors (0–7).
     case bright(Int)
-    /// 256 色索引（0–255）。
+    /// 256-color index (0–255).
     case indexed(Int)
-    /// 24-bit True Color。
+    /// 24-bit True Color.
     case rgb(Int, Int, Int)
 
     /// 根据终端能力生成 SGR 参数码序列。

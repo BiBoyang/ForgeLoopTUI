@@ -1,17 +1,18 @@
 import Foundation
 
-/// 内存中的虚拟终端：实现 `Terminal` 协议，用于测试与无真实 TTY 场景。
+/// In-memory virtual terminal: implements the `Terminal` protocol, for tests
+/// and scenarios without a real TTY.
 ///
-/// 当前为可解释 TUI ANSI 输出的最小终端，支持：
-/// - 普通字符写入与自动换行
-/// - `\r`、`\n`
-/// - `ESC[2J`（清屏）、`ESC[H`（归位）
-/// - `ESC[nA`（上移）、`ESC[nB`（下移）、`ESC[nC`（右移）、`ESC[nD`（左移）
-/// - `ESC[nG`（光标绝对列，CHA）
-/// - `ESC[2K`（清除当前行）
+/// Currently a minimal terminal capable of interpreting TUI ANSI output, supporting:
+/// - Plain character writes with automatic line wrapping
+/// - `\r`, `\n`
+/// - `ESC[2J` (clear screen), `ESC[H` (cursor home)
+/// - `ESC[nA` (move up), `ESC[nB` (move down), `ESC[nC` (move right), `ESC[nD` (move left)
+/// - `ESC[nG` (absolute cursor column, CHA)
+/// - `ESC[2K` (clear current line)
 ///
-/// 网格/光标/滚屏行为将在后续迭代继续深化。
-/// 虚拟终端单元格：字符及其当前 SGR 样式。
+/// Grid/cursor/scroll behavior will be further refined in later iterations.
+/// Virtual terminal cell: a character and its current SGR style.
 public struct Cell: Sendable, Equatable {
     public var character: Character
     public var style: SGRState
@@ -62,7 +63,7 @@ public final class VirtualTerminal: Terminal, @unchecked Sendable {
         }
     }
 
-    /// 当前屏幕内容的紧凑文本表示（去除尾部空格与空行）。
+    /// A compact text representation of the current screen contents (trailing spaces and empty lines removed).
     public var buffer: String {
         lock.withLock {
             var lines = grid.map { row in String(row.map(\.character)) }
@@ -78,23 +79,24 @@ public final class VirtualTerminal: Terminal, @unchecked Sendable {
         }
     }
 
-    /// 原始屏幕行（包含空格，长度固定为 `width`）。
+    /// Raw screen lines (spaces included, each fixed to `width` in length).
     public var screenLines: [String] {
         lock.withLock {
             grid.map { row in String(row.map(\.character)) }
         }
     }
 
-    /// 原始屏幕单元格（包含样式信息）。
+    /// Raw screen cells (including style information).
     public var screenCells: [[Cell]] {
         lock.withLock {
             grid
         }
     }
 
-    /// 调整虚拟终端尺寸。
+    /// Resizes the virtual terminal.
     ///
-    /// 语义：保留左上可见区域，裁剪越界内容，新增区域以空格填充，光标收敛到新边界内。
+    /// Semantics: preserves the top-left visible region, clips out-of-bounds content,
+    /// fills newly added area with spaces, and clamps the cursor into the new bounds.
     public func resize(width newWidth: Int, height newHeight: Int) {
         lock.withLock {
             let oldWidth = width
@@ -123,7 +125,7 @@ public final class VirtualTerminal: Terminal, @unchecked Sendable {
         }
     }
 
-    /// 清空屏幕并将光标归位。
+    /// Clears the screen and homes the cursor.
     public func clear() {
         lock.withLock {
             clearScreen()

@@ -56,7 +56,7 @@ extension TerminalCapability {
     }
 }
 
-/// 默认终端实现：直接写入标准输出（stdout）。
+/// Default terminal implementation: writes directly to standard output (stdout).
 public struct StdoutTerminal: Terminal {
     public var isTTY: Bool { isatty(STDOUT_FILENO) != 0 }
     public var capability: TerminalCapability {

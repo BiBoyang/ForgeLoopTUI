@@ -1,13 +1,15 @@
 import Foundation
 
-/// `liveBudget` 计入方式。
+/// How `liveBudget` is counted.
 ///
-/// - ``logicalLines``: 用逻辑行数(`live.count`)作为预算。
-///   适合输入框、状态行等可控行数的场景,亦是历史默认。
-/// - ``physicalRows``: 用 `physicalRows(for:width:)` 的物理行数累加作为预算。
-///   适合 streaming/markdown 等会发生 wrap 的内容,以及窄终端。
+/// - ``logicalLines``: uses the logical line count (`live.count`) as the
+///   budget. Suitable for scenarios with a controllable line count, such as
+///   input fields and status lines; also the historical default.
+/// - ``physicalRows``: uses the accumulated physical row count from
+///   `physicalRows(for:width:)` as the budget. Suitable for content that
+///   wraps, such as streaming/markdown, and for narrow terminals.
 ///
-/// 稳定等级: Provisional。
+/// Stability: Provisional.
 public enum LiveBudgetMode: Sendable, Equatable {
     case logicalLines
     case physicalRows

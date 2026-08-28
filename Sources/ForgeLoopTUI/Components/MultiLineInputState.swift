@@ -55,7 +55,7 @@ public struct MultiLineInputRenderResult: Sendable, Equatable {
 /// `moveDown` map between *visible columns* and character indices, so
 /// `Viewport` is purely additive and does not affect any other action.
 ///
-/// 稳定等级: Stable。
+/// Stability level: Stable.
 public struct Viewport: Sendable, Equatable {
     public let width: Int
 

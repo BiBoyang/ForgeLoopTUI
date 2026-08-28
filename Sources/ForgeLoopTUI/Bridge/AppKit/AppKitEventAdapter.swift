@@ -1,28 +1,29 @@
 import AppKit
 
-/// 将 AppKit NSEvent 按键事件转换为 ForgeLoopTUI 的规范化 KeyEvent。
+/// Converts AppKit NSEvent key events into ForgeLoopTUI's normalized KeyEvent.
 ///
-/// 本适配器是纯数据转换，不保留状态，不依赖 RunLoop 或 Window。
-/// 应用侧在 NSView.keyDown(with:) 中调用即可获得库级 KeyEvent。
+/// This adapter performs pure data conversion: it keeps no state and does not
+/// depend on the RunLoop or a Window. The app side calls it from
+/// NSView.keyDown(with:) to obtain a library-level KeyEvent.
 ///
-/// ## 映射范围
-/// - 单字符可打印输入（含组合键）：→ .character(c)
-/// - 方向键、功能键、导航键：→ 对应 Key 枚举值
-/// - 修饰符映射：NSEvent.ModifierFlags → ForgeLoopTUI.Modifiers
-/// - 未知/不可映射事件：返回 nil（静默丢弃，不抛错）
+/// ## Mapping Scope
+/// - Single printable characters (including with modifier combinations): → .character(c)
+/// - Arrow keys, function keys, navigation keys: → the corresponding Key enum case
+/// - Modifier mapping: NSEvent.ModifierFlags → ForgeLoopTUI.Modifiers
+/// - Unknown/unmappable events: returns nil (silently dropped, no error thrown)
 ///
-/// ## 不处理
-/// - keyUp、flagsChanged、mouse 事件：直接返回 nil
-/// - 多字符输入：返回 nil（每个 keyDown 只应产生一个逻辑按键）
-/// - IME 组合态：返回 nil（P0 不处理多字符组合输入）
-/// - 系统级快捷键（Cmd+Q 等）：由 NSApplication 拦截，不会到达 keyDown
+/// ## Not Handled
+/// - keyUp, flagsChanged, and mouse events: return nil directly
+/// - Multi-character input: returns nil (each keyDown should produce exactly one logical key)
+/// - IME composition states: returns nil (P0 does not handle multi-character composed input)
+/// - System-level shortcuts (Cmd+Q etc.): intercepted by NSApplication and never reach keyDown
 public struct AppKitEventAdapter: Sendable {
     public init() {}
 
-    /// 从 NSEvent.keyDown 事件创建 KeyEvent。
+    /// Creates a KeyEvent from an NSEvent.keyDown event.
     ///
-    /// - Parameter event: NSEvent（仅处理 .keyDown 类型）
-    /// - Returns: 规范化 KeyEvent，无法映射时返回 nil（静默丢弃）
+    /// - Parameter event: The NSEvent (only `.keyDown` type is handled)
+    /// - Returns: A normalized KeyEvent, or nil when it cannot be mapped (silently dropped)
     public func keyEvent(from event: NSEvent) -> KeyEvent? {
         guard event.type == .keyDown else {
             return nil

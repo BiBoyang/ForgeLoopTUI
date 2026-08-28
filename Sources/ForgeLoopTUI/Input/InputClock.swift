@@ -1,10 +1,12 @@
 import Foundation
 
-/// 可注入的单调时间源，用于 `InputPipeline` 的 ESC 超时判断。
+/// An injectable monotonic time source, used by `InputPipeline` for ESC
+/// timeout decisions.
 ///
-/// 生产环境使用 `SystemInputClock`，测试环境使用手动控制的实现。
+/// Production code uses `SystemInputClock`; tests use a manually controlled
+/// implementation.
 public protocol InputClock: Sendable {
-    /// 返回单调递增的时间戳，单位纳秒。
+    /// Returns a monotonically increasing timestamp in nanoseconds.
     func now() -> UInt64
 }
 
