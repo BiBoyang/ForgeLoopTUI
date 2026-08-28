@@ -65,6 +65,28 @@ struct KeyParserTests {
         ])
     }
 
+    @Test("modifier parameter 0 means no modifiers (ECMA-48 default)")
+    func testModifierZeroMeansDefault() {
+        // CSI 1 ; 0 A: explicit 0 in the modifier slot is the default
+        // (no modifiers), not an unknown literal value.
+        let events = parser.parse([
+            .csi(params: [1, 0], command: "A"),
+            .csi(params: [3, 0], command: "~"),
+        ])
+        #expect(events == [
+            KeyEvent(key: .up),
+            KeyEvent(key: .delete),
+        ])
+    }
+
+    @Test("zero in the key-code slot does not shift modifier extraction")
+    func testZeroKeyCodeSlotKeepsModifier() {
+        // CSI ; 5 A: the empty key-code slot parses as 0 (default); the
+        // modifier is still read from the last parameter.
+        let events = parser.parse([.csi(params: [0, 5], command: "A")])
+        #expect(events == [KeyEvent(key: .up, modifiers: .ctrl)])
+    }
+
     // MARK: - Home / End / PageUp / PageDown / Insert / Delete
 
     @Test("home and end via CSI")

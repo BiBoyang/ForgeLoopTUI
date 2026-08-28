@@ -156,6 +156,14 @@ public final class VirtualTerminal: Terminal, @unchecked Sendable {
         }
     }
 
+    /// ECMA-48: a parameter value of 0 means "use the default", which is 1
+    /// for the motion / line-count commands. `ESC[A` (parameterless) and
+    /// `ESC[0A` / `ESC[;A` all carry the default count of 1 here.
+    private func motionCount(_ params: [Int]) -> Int {
+        let value = params.first ?? 1
+        return value > 0 ? value : 1
+    }
+
     private func handleCSI(params: [Int], command: Character) {
         switch command {
         case "J":
@@ -168,24 +176,24 @@ public final class VirtualTerminal: Terminal, @unchecked Sendable {
             cursorRow = max(0, min(height - 1, row - 1))
             cursorCol = max(0, min(width - 1, col - 1))
         case "A":
-            cursorRow = max(0, cursorRow - (params.first ?? 1))
+            cursorRow = max(0, cursorRow - motionCount(params))
         case "B":
-            cursorRow = min(height - 1, cursorRow + (params.first ?? 1))
+            cursorRow = min(height - 1, cursorRow + motionCount(params))
         case "C":
-            cursorCol = min(width - 1, cursorCol + (params.first ?? 1))
+            cursorCol = min(width - 1, cursorCol + motionCount(params))
         case "D":
-            cursorCol = max(0, cursorCol - (params.first ?? 1))
+            cursorCol = max(0, cursorCol - motionCount(params))
         case "G":
-            let col = params.first ?? 1
+            let col = motionCount(params)
             cursorCol = max(0, min(width - 1, col - 1))
         case "K":
             if params.first == 2 {
                 clearCurrentLine()
             }
         case "L":
-            insertLines(params.first ?? 1)
+            insertLines(motionCount(params))
         case "M":
-            deleteLines(params.first ?? 1)
+            deleteLines(motionCount(params))
         case "m":
             currentStyle.apply(params)
         default:

@@ -321,4 +321,50 @@ final class VirtualTerminalTests: XCTestCase {
         XCTAssertEqual(vt.screenLines[1], "BBBB ")
         XCTAssertEqual(vt.screenLines[2], "CCCC ")
     }
+
+    // MARK: - CSI 0-as-default (ECMA-48)
+
+    func testMotionCommandsTreatExplicitZeroAsDefaultOne() {
+        let vt = VirtualTerminal(width: 10, height: 5)
+        vt.write("\u{1B}[5;5H") // cursor at row 4, col 4
+        XCTAssertEqual(vt.cursorRow, 4)
+        XCTAssertEqual(vt.cursorCol, 4)
+        vt.write("\u{1B}[0A") // up 1, not a no-op
+        XCTAssertEqual(vt.cursorRow, 3)
+        vt.write("\u{1B}[0B") // down 1
+        XCTAssertEqual(vt.cursorRow, 4)
+        vt.write("\u{1B}[0C") // right 1
+        XCTAssertEqual(vt.cursorCol, 5)
+        vt.write("\u{1B}[0D") // left 1
+        XCTAssertEqual(vt.cursorCol, 4)
+        vt.write("\u{1B}[0G") // column 1
+        XCTAssertEqual(vt.cursorCol, 0)
+    }
+
+    func testMotionCommandsTreatEmptyParameterAsDefaultOne() {
+        // ESC[;A carries an explicit empty parameter slot (parsed as 0);
+        // ESC[A is fully parameterless. Both must act as a count of 1.
+        let vt = VirtualTerminal(width: 10, height: 5)
+        vt.write("\u{1B}[5;5H")
+        vt.write("\u{1B}[;A")
+        XCTAssertEqual(vt.cursorRow, 3)
+        vt.write("\u{1B}[A")
+        XCTAssertEqual(vt.cursorRow, 2)
+        vt.write("\u{1B}[;C")
+        XCTAssertEqual(vt.cursorCol, 5)
+        vt.write("\u{1B}[C")
+        XCTAssertEqual(vt.cursorCol, 6)
+    }
+
+    func testZeroCountInsertDeleteLinesDefaultToOne() {
+        let vt = VirtualTerminal(width: 5, height: 3)
+        vt.write("\u{1B}[1;1HAAAA\u{1B}[2;1HBBBB")
+        vt.write("\u{1B}[2;1H\u{1B}[0L") // insert 1 line, not a no-op
+        XCTAssertEqual(vt.screenLines[0], "AAAA ")
+        XCTAssertTrue(vt.screenLines[1].allSatisfy { $0 == " " })
+        XCTAssertEqual(vt.screenLines[2], "BBBB ")
+        vt.write("\u{1B}[0M") // delete 1 line, not a no-op
+        XCTAssertEqual(vt.screenLines[0], "AAAA ")
+        XCTAssertEqual(vt.screenLines[1], "BBBB ")
+    }
 }
