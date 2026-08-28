@@ -155,7 +155,7 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 
 | Type | Kind | Stability | Breaking-change risk | Migration advice |
 |------|------|-----------|----------------------|------------------|
-| `CoreRenderEvent` | `enum` | **Stable** | Low | Generic event vocabulary; new cases may be added safely; added `.blockCancel` and `.thinking` in v1.1.0. Block events are single-active-block: only one block open at a time; a new `blockStart` implicitly finalizes the previous block, and `blockUpdate`/`blockEnd`/`blockCancel` with a mismatched `id` are ignored |
+| `CoreRenderEvent` | `enum` | **Stable** | Low | Generic event vocabulary; new cases may be added safely; added `.blockCancel` and `.thinking` in v1.1.0. Block events are single-active-block: only one block open at a time; a new `blockStart` implicitly finalizes the previous block, `blockUpdate`/`blockEnd`/`blockCancel` with a mismatched `id` are ignored, and a `blockEnd`/`blockCancel` arriving with no open block (e.g. a late event after cancellation) is ignored; only `blockUpdate` implicitly adopts the id (legacy no-`blockStart` usage) |
 | `TranscriptRenderer` | `class` | **Stable** | Low | `applyCore(_:)` + `transcriptLines` are the contract |
 | `TranscriptRenderOptions` | `struct` | **Stable** | Low | Configurable summary/notification limits; v1.1.0 |
 | `StreamingTranscriptAppendState` | `struct` | **Stable** | Low | Delta computation for append-only streaming |

@@ -306,6 +306,48 @@ final class TranscriptRendererTests: XCTestCase {
         XCTAssertTrue(renderer.transcriptLines.contains("streaming"))
     }
 
+    // MARK: - Late/orphan blockEnd with no open block
+
+    func testLateBlockEndAfterCancelIsIgnored() {
+        let renderer = TranscriptRenderer()
+        renderer.applyCore(.blockStart(id: "b1"))
+        renderer.applyCore(.blockUpdate(id: "b1", lines: ["partial"]))
+        renderer.applyCore(.blockCancel(id: "b1"))
+        // The sender's final blockEnd races in after the cancel (abort path).
+        renderer.applyCore(.blockEnd(id: "b1", lines: ["final content"], footer: nil))
+
+        let lines = renderer.transcriptLines
+        XCTAssertTrue(lines.contains("[cancelled]"))
+        XCTAssertFalse(lines.contains("final content"))
+        // [cancelled] stays the last meaningful line; nothing is appended after it.
+        let lastNonEmpty = lines.reversed().first { !$0.isEmpty }
+        XCTAssertEqual(lastNonEmpty, "[cancelled]")
+    }
+
+    func testOrphanBlockEndWithNoBlockIsIgnored() {
+        let renderer = TranscriptRenderer()
+        renderer.applyCore(.insert(lines: ["existing"]))
+        // blockEnd with no prior blockStart/blockUpdate: a stray event.
+        renderer.applyCore(.blockEnd(id: "b1", lines: ["rogue"], footer: nil))
+
+        XCTAssertEqual(renderer.transcriptLines, ["existing"])
+        XCTAssertNil(renderer.activeStreamingRange)
+        XCTAssertNil(renderer.lastCompletedAssistantRange)
+    }
+
+    func testImplicitlyAdoptedBlockStillEndsNormally() {
+        // Legacy usage: blockUpdate without blockStart implicitly adopts
+        // the id; the subsequent blockEnd must still finalize normally.
+        let renderer = TranscriptRenderer()
+        renderer.applyCore(.blockUpdate(id: "b1", lines: ["draft"]))
+        renderer.applyCore(.blockEnd(id: "b1", lines: ["final text"], footer: nil))
+
+        let lines = renderer.transcriptLines
+        XCTAssertTrue(lines.contains("final text"))
+        XCTAssertNil(renderer.activeStreamingRange)
+        XCTAssertNotNil(renderer.lastCompletedAssistantRange)
+    }
+
     // MARK: - thinking (CoreRenderEvent)
 
     func testThinkingRendersWithPrefix() {
