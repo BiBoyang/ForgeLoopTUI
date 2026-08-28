@@ -247,6 +247,65 @@ final class TranscriptRendererTests: XCTestCase {
         XCTAssertFalse(lines.contains("streaming"))
     }
 
+    // MARK: - Single-active-block semantics (CoreRenderEvent)
+
+    func testBlockStartWhileOpenImplicitlyFinalizesPreviousBlock() {
+        let renderer = TranscriptRenderer()
+        renderer.applyCore(.blockStart(id: "A"))
+        renderer.applyCore(.blockUpdate(id: "A", lines: ["draft A"]))
+
+        // No blockEnd for A (e.g. the sender crashed); B starts anyway.
+        renderer.applyCore(.blockStart(id: "B"))
+        renderer.applyCore(.blockUpdate(id: "B", lines: ["content B"]))
+        renderer.applyCore(.blockEnd(id: "B", lines: ["content B"], footer: nil))
+
+        let lines = renderer.transcriptLines
+        // A's streamed content is kept as-is (finalized), not clobbered by B.
+        XCTAssertTrue(lines.contains("draft A"))
+        XCTAssertTrue(lines.contains("content B"))
+        XCTAssertNil(renderer.activeStreamingRange)
+        // A's finalized range is not lost when B's updates shift lines.
+        XCTAssertNotNil(renderer.lastCompletedAssistantRange)
+    }
+
+    func testBlockUpdateWithMismatchedIDIsIgnored() {
+        let renderer = TranscriptRenderer()
+        renderer.applyCore(.blockStart(id: "A"))
+        renderer.applyCore(.blockUpdate(id: "B", lines: ["rogue update"]))
+
+        XCTAssertFalse(renderer.transcriptLines.contains("rogue update"))
+
+        // The active block is unaffected and can still update.
+        renderer.applyCore(.blockUpdate(id: "A", lines: ["real content"]))
+        XCTAssertTrue(renderer.transcriptLines.contains("real content"))
+    }
+
+    func testBlockEndWithMismatchedIDIsIgnored() {
+        let renderer = TranscriptRenderer()
+        renderer.applyCore(.blockStart(id: "A"))
+        renderer.applyCore(.blockUpdate(id: "A", lines: ["streaming"]))
+        renderer.applyCore(.blockEnd(id: "B", lines: ["rogue end"], footer: nil))
+
+        // B's end is ignored: no rogue content, A still streaming.
+        XCTAssertFalse(renderer.transcriptLines.contains("rogue end"))
+        XCTAssertNotNil(renderer.activeStreamingRange)
+
+        renderer.applyCore(.blockEnd(id: "A", lines: ["final"], footer: nil))
+        XCTAssertTrue(renderer.transcriptLines.contains("final"))
+        XCTAssertNil(renderer.activeStreamingRange)
+    }
+
+    func testBlockCancelWithMismatchedIDIsIgnored() {
+        let renderer = TranscriptRenderer()
+        renderer.applyCore(.blockStart(id: "A"))
+        renderer.applyCore(.blockUpdate(id: "A", lines: ["streaming"]))
+        renderer.applyCore(.blockCancel(id: "B"))
+
+        XCTAssertFalse(renderer.transcriptLines.contains("[cancelled]"))
+        XCTAssertNotNil(renderer.activeStreamingRange)
+        XCTAssertTrue(renderer.transcriptLines.contains("streaming"))
+    }
+
     // MARK: - thinking (CoreRenderEvent)
 
     func testThinkingRendersWithPrefix() {

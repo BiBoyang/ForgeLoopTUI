@@ -32,6 +32,12 @@ public final class TranscriptRenderer {
     /// 按开始顺序（slot 顺序）存储的 pending tool。
     private var pendingTools: [(id: String, lineIndex: Int)] = []
     private var notificationLines: [Int] = []
+    /// The id of the currently open streaming block, if any.
+    ///
+    /// Block events are single-active-block: a new `blockStart` implicitly
+    /// finalizes the previous block, and `blockUpdate`/`blockEnd`/
+    /// `blockCancel` with a non-matching id are ignored.
+    private var activeBlockID: String?
     private let markdownEngine: MarkdownEngine
     private let options: TranscriptRenderOptions
 
@@ -64,18 +70,39 @@ public final class TranscriptRenderer {
                 append(line)
             }
 
-        case .blockStart:
+        case .blockStart(let id):
+            if activeBlockID != nil {
+                // 防御性收尾：上一个 block 未 blockEnd 就来了新的 blockStart
+                // （如发送方崩溃/错误路径），隐式按现状终结旧 block，
+                // 避免两个 block 的流式状态互相覆盖。
+                completedRange = streamingRange
+                streamingRange = nil
+                markdownEngine.reset()
+                append("")
+            }
             let start = lines.count
             streamingRange = start..<start
+            activeBlockID = id
             markdownEngine.reset()
 
-        case .blockUpdate(_, let newLines):
+        case .blockUpdate(let id, let newLines):
+            if let activeID = activeBlockID {
+                // id 失配的 update 属于误用（或迟到事件），忽略。
+                guard id == activeID else { break }
+            } else {
+                // 无 blockStart 直接 update 的旧式用法：隐式开始并收养该 id。
+                activeBlockID = id
+            }
             replaceStreaming(with: renderMarkdown(lines: newLines, isFinal: false))
 
-        case .blockEnd(_, let newLines, let footer):
+        case .blockEnd(let id, let newLines, let footer):
+            if let activeID = activeBlockID {
+                guard id == activeID else { break }
+            }
             replaceStreaming(with: renderMarkdown(lines: newLines, isFinal: true))
             completedRange = streamingRange
             streamingRange = nil
+            activeBlockID = nil
             markdownEngine.reset()
             append("")
 
@@ -87,11 +114,15 @@ public final class TranscriptRenderer {
                 }
             }
 
-        case .blockCancel:
+        case .blockCancel(let id):
+            if let activeID = activeBlockID {
+                guard id == activeID else { break }
+            }
             // 丢弃进行中的流式内容，仅保留取消标记，清理所有 streaming 状态。
             replaceStreaming(with: ["[cancelled]"])
             streamingRange = nil
             completedRange = nil
+            activeBlockID = nil
             markdownEngine.reset()
             append("")
 

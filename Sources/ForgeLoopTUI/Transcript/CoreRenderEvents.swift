@@ -9,16 +9,31 @@ public enum CoreRenderEvent: Sendable, Equatable {
     case insert(lines: [String])
 
     /// 开始一个可更新的内容块。
+    ///
+    /// Block events are single-active-block: only one block may be open at a
+    /// time. A `blockStart` arriving while another block is still open
+    /// implicitly finalizes the previous block (its streamed content is kept
+    /// as-is) before the new block begins.
     case blockStart(id: String)
 
     /// 更新内容块的行。
+    ///
+    /// The `id` must match the currently open block's id; mismatched updates
+    /// are ignored. An update with no preceding `blockStart` implicitly opens
+    /// a block adopting that `id`.
     case blockUpdate(id: String, lines: [String])
 
     /// 结束内容块，追加可选 footer（如错误消息）。
+    ///
+    /// The `id` must match the currently open block's id; mismatched ends are
+    /// ignored.
     case blockEnd(id: String, lines: [String], footer: String?)
 
     /// 取消进行中的内容块（用户中断等）。
     /// 与 `blockEnd` 不同：流式内容被丢弃，仅保留取消标记。
+    ///
+    /// The `id` must match the currently open block's id; mismatched cancels
+    /// are ignored.
     case blockCancel(id: String)
 
     /// 模型思考/推理内容（与普通 assistant 文本区分渲染）。
