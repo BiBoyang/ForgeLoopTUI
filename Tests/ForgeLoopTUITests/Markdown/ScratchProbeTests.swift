@@ -1,8 +1,9 @@
 import XCTest
 @testable import ForgeLoopTUI
 
-/// TASK-21 scratch probe（调查用，不入 Review Package 的正式测试集）：
-/// 验证 stable-prefix 晋升假设 + 全量 fixture 逐字符回放的终态一致性。
+/// TASK-21 回归测试：流式回放（blockStart → 累积 blockUpdate → blockEnd）
+/// 终态必须与一次性静态 blockEnd 渲染逐行一致。覆盖最小表格逐字符回放与
+/// 全量 fixture 多 chunk 粒度（1/2/3/5/7/11）。
 final class ScratchProbeTests: XCTestCase {
     @MainActor
     private func replay(

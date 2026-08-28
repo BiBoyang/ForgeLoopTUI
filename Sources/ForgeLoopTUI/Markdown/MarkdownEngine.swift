@@ -19,6 +19,8 @@ public final class PlainTextMarkdownEngine: MarkdownEngine {
 public final class StreamingMarkdownEngine: MarkdownEngine {
     private var stableSource = ""
     private var stableRendered: [String] = []
+    /// 稳定渲染当前是否缺少尾边界空行（见 render 内的 drop/补回逻辑）。
+    private var stableTrailingBlankDropped = false
     private let thematicBreak = String(repeating: "─", count: 24)
     public let options: MarkdownRenderOptions
 
@@ -34,6 +36,7 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
     public func reset() {
         stableSource = ""
         stableRendered = []
+        stableTrailingBlankDropped = false
     }
 
     public func render(text: String, isFinal: Bool) -> [String] {
@@ -57,16 +60,33 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
             let stableDelta = String(suffix.prefix(advance))
             stableSource += stableDelta
             var deltaRendered = renderFully(text: stableDelta, isFinal: true)
-            let unstable = String(text.dropFirst(stableSource.count))
-            if !unstable.isEmpty, stableDelta.hasSuffix("\n"), deltaRendered.last == "" {
+            // stableSource 恒以行边界（\n）结尾；renderFully 拆行产生的尾随
+            // "" 是「边界之后的下一行前缀」，属于 unstable 区而非稳定内容。
+            // 无条件丢弃，维持不变量：
+            //   stableRendered ≡ renderFully(stableSource) − 尾边界 ""
+            // 此前仅在 unstable 非空时丢弃：快照恰好停在行边界（unstable 为
+            // 空）时尾 "" 被永久固化，每个被晋升的行边界多出一条空行。
+            // fence 内的尾行渲染为 "│"（last != ""），不触发丢弃。
+            if stableDelta.hasSuffix("\n"), deltaRendered.last == "" {
                 deltaRendered.removeLast()
+                stableTrailingBlankDropped = true
+            } else {
+                stableTrailingBlankDropped = false
             }
             stableRendered += deltaRendered
         }
 
         let unstable = String(text.dropFirst(stableSource.count))
         let unstableRendered = renderFully(text: unstable, isFinal: isFinal)
-        return stableRendered + unstableRendered
+        var result = stableRendered + unstableRendered
+        // isFinal 时补回全文尾边界的空行，使流式终态与一次性静态渲染逐行
+        // 一致（静态路径走同一 drop/补回逻辑，两条路径保持对称）。
+        // 标志为持久状态：终帧可能无新晋升（advance == 0，快照在终帧前已
+        // 停在尾边界），此时尾界 "" 是此前帧丢弃的，仍需补回。
+        if isFinal, stableTrailingBlankDropped, unstable.isEmpty {
+            result.append("")
+        }
+        return result
     }
 
     private func stableAdvance(in text: String, isFinal: Bool) -> Int {
@@ -107,6 +127,25 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
             }
         }
 
+        // 表头前瞻（E2-a）：candidate 以 \n 结尾故 lines.last 恒为 ""，最后
+        // 一个实际行是倒数第二行。若该行呈表头形状（有未转义管道），回退到
+        // 它之前不晋升——表头与 divider 必须同时进入稳定前缀才能整体按表格
+        // 渲染；只晋升表头会被 renderFully 按普通文本永久冻结，随后到达的
+        // divider 再也无法与之成表（终态整表降级为裸管道文本）。
+        // fence 内的管道行不会到达这里：fence retreat 已在前面拦截。
+        // 误伤面：普通文本行含管道时保守回退一行，瞬态多渲染一次，正确性
+        // 无损；isFinal 时本函数直接返回全文，不受影响。
+        if lines.count >= 2, parseTableCells(lines[lines.count - 2]) != nil {
+            let headerIndex = lines.count - 2
+            let prefixLines = lines.prefix(headerIndex)
+            let prefixText = prefixLines.joined(separator: "\n")
+            var retreat = prefixText.count
+            if headerIndex > 0 {
+                retreat += 1
+            }
+            return retreat
+        }
+
         return text.distance(from: text.startIndex, to: candidateEnd)
     }
 
@@ -114,9 +153,16 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         lines: [String],
         remainder: String
     ) -> Int? {
-        guard !remainder.isEmpty else { return nil }
-        let trimmedRemainder = remainder.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedRemainder.isEmpty, trimmedRemainder.hasPrefix("|") else { return nil }
+        // 快照停在行边界（remainder 为空）时同样参与检测：数据行陆续到达
+        // 期间，candidate 尾部是「header + divider + 已到数据行」的表格
+        // 前缀，任何中段都不得晋升——renderFully 对没有数据行的表头段
+        // 会降级为普通文本，一旦晋升整表无法再成。此前 remainder 为空
+        // 直接返回 nil，快照停在数据行边界时表头段被晋升（终态降级）。
+        // remainder 非空时维持原约束：流正处于表格行（| 开头）中才 retreat。
+        if !remainder.isEmpty {
+            let trimmedRemainder = remainder.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedRemainder.isEmpty, trimmedRemainder.hasPrefix("|") else { return nil }
+        }
 
         let trailingEmpty = lines.last == ""
         let end = trailingEmpty ? lines.count - 2 : lines.count - 1

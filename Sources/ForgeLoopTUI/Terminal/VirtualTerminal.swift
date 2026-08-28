@@ -6,7 +6,7 @@ import Foundation
 /// Currently a minimal terminal capable of interpreting TUI ANSI output, supporting:
 /// - Plain character writes with automatic line wrapping
 /// - `\r`, `\n`
-/// - `ESC[2J` (clear screen), `ESC[H` (cursor home)
+/// - `ESC[2J` (clear screen), `ESC[0J` (erase cursor to end of screen), `ESC[H` (cursor home)
 /// - `ESC[nA` (move up), `ESC[nB` (move down), `ESC[nC` (move right), `ESC[nD` (move left)
 /// - `ESC[nG` (absolute cursor column, CHA)
 /// - `ESC[2K` (clear current line)
@@ -167,8 +167,11 @@ public final class VirtualTerminal: Terminal, @unchecked Sendable {
     private func handleCSI(params: [Int], command: Character) {
         switch command {
         case "J":
+            // ED: 0 (or omitted) = erase cursor→end-of-screen, 2 = clear all.
             if params.first == 2 {
                 clearScreen()
+            } else if params.isEmpty || params.first == 0 {
+                eraseFromCursor()
             }
         case "H":
             let row = params.count > 0 ? params[0] : 1
@@ -207,6 +210,18 @@ public final class VirtualTerminal: Terminal, @unchecked Sendable {
         cursorRow = 0
         cursorCol = 0
         currentStyle.reset()
+    }
+
+    /// `ESC[0J` — 擦除光标位置到屏幕末尾（含光标处），光标不动。
+    private func eraseFromCursor() {
+        let blankCell = Cell(character: " ", style: SGRState())
+        guard cursorRow >= 0 && cursorRow < height else { return }
+        for c in cursorCol..<width {
+            grid[cursorRow][c] = blankCell
+        }
+        for r in (cursorRow + 1)..<height {
+            grid[r] = Array(repeating: blankCell, count: width)
+        }
     }
 
     private func clearCurrentLine() {

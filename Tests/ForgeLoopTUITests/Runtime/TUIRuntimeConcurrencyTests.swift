@@ -73,7 +73,14 @@ struct TUIRuntimeConcurrencyTests {
         #expect(sink.writes.count == lanes * iterations * 2)
         // Every placement write contains a CHA (column absolute) sequence;
         // a lost/garbled undo would surface as a missing or malformed write.
-        let placementWrites = sink.writes.filter { $0.contains("\u{1B}[") && !$0.contains("\u{1B}[2K") }
+        // Content writes are excluded by their erase markers: the diff path
+        // emits `ESC[0J` (formerly `ESC[2K` per erased line) — neither ever
+        // appears in a placement write.
+        let placementWrites = sink.writes.filter {
+            $0.contains("\u{1B}[")
+                && !$0.contains("\u{1B}[2K")
+                && !$0.contains("\u{1B}[0J")
+        }
         #expect(placementWrites.allSatisfy { $0.contains("G") })
     }
 

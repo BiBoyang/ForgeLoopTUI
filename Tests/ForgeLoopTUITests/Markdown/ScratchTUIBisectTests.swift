@@ -1,9 +1,9 @@
 import XCTest
 @testable import ForgeLoopTUI
 
-/// TASK-21 调查用终端模型：真实终端语义（deferred wrap、显示宽度换行、
+/// TASK-21 回归测试终端模型：真实终端语义（deferred wrap、显示宽度换行、
 /// 底部滚动推入 scrollback），覆盖 TUI 输出所用的全部 ANSI 子集：
-/// ESC[2J/H, A/B/C/D/G, 2K, nL, nM, \r, \n。仅供调查，不随修复提交。
+/// ESC[2J/0J/H, A/B/C/D/G, 2K, nL, nM, \r, \n。
 final class ScrollbackTerminal: Terminal, @unchecked Sendable {
     let isTTY: Bool = true
     var capability: TerminalCapability { .truecolor }
@@ -107,6 +107,16 @@ final class ScrollbackTerminal: Terminal, @unchecked Sendable {
         case "J":
             if params.first == 2 {
                 for r in 0..<height {
+                    grid[r] = Array(repeating: " ", count: width)
+                    contMask[r] = Array(repeating: false, count: width)
+                }
+            } else if params.first == 0 {
+                // ESC[0J：光标（含）到屏尾擦除，光标不动，无滚动。
+                for c in col..<width {
+                    grid[row][c] = " "
+                    contMask[row][c] = false
+                }
+                for r in (row + 1)..<height {
                     grid[r] = Array(repeating: " ", count: width)
                     contMask[r] = Array(repeating: false, count: width)
                 }
@@ -237,7 +247,9 @@ final class ScratchTUIBisectTests: XCTestCase {
 
             var physical: [String] = []
             for line in frame.committed + frame.live {
-                physical.append(contentsOf: wrapToWidth(line, width: width))
+                // 终端按可见列自动换行（ANSI 序列不占格）：oracle 换行前
+                // 先剥离转义序列，否则换行位置与真实终端不一致。
+                physical.append(contentsOf: wrapToWidth(ansiStripped(line), width: width))
             }
             let expected = physical.suffix(height)
             let actual = vt.screenLines

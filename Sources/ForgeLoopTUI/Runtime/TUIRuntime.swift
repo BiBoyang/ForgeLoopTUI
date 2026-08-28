@@ -595,24 +595,19 @@ public final class TUI: @unchecked Sendable {
             }
 
             let prefixRows = totalPhysicalRows(for: prev.prefix(startLineIndex))
-            let prevTailRows = totalPhysicalRows(for: prev.dropFirst(startLineIndex))
             let newTail = Array(lines.dropFirst(startLineIndex))
             let rewindRows = wasAnchored
                 ? max(0, (prevRows - 1) - prefixRows)
                 : max(0, prevRows - prefixRows)
 
+            // 与 renderInlineCommittedLive 同型：rewind 到 diff 起始行行首，
+            // `ESC[0J` 一次擦到屏尾后原地重写 newTail（见该处注释：逐行
+            // `ESC[2K` + `\n` 的 erase 循环在整屏帧上会触发终端滚动）。
             output += "\r"
             if rewindRows > 0 {
                 output += "\u{1B}[\(rewindRows)A"
             }
-
-            for _ in 0..<prevTailRows {
-                output += "\u{1B}[2K\r\n"
-            }
-
-            if prevTailRows > 0 {
-                output += "\u{1B}[\(prevTailRows)A"
-            }
+            output += "\u{1B}[0J"
             output += newTail.joined(separator: ttyNewline)
             if trailingNewline {
                 output += ttyNewline
@@ -758,21 +753,12 @@ public final class TUI: @unchecked Sendable {
             startLineIndex = 0
         }
 
-        // 3. 计算 prefixRows（到 startLineIndex 为止的物理行数）
+        // 4. 计算 prefixRows（到 startLineIndex 为止的物理行数）
         let prefixRows: Int
         if startLineIndex <= committed.count {
             prefixRows = totalPhysicalRows(for: committed.prefix(startLineIndex))
         } else {
             prefixRows = lastCommittedPhysicalRows + totalPhysicalRows(for: live.prefix(startLineIndex - committed.count))
-        }
-
-        // 4. 计算 prevTailRows（从 startLineIndex 到 prev 末尾的物理行数）
-        let prevTailRows: Int
-        if startLineIndex <= prevCommitted.count {
-            let committedTail = totalPhysicalRows(for: prevCommitted.dropFirst(startLineIndex))
-            prevTailRows = committedTail + prevLiveRows
-        } else {
-            prevTailRows = totalPhysicalRows(for: prevLive.dropFirst(startLineIndex - prevCommitted.count))
         }
 
         // 5. 计算 newTail 和 rewindRows
@@ -783,19 +769,19 @@ public final class TUI: @unchecked Sendable {
             ? max(0, (prevTotalRows - 1) - prefixRows)
             : max(0, prevTotalRows - prefixRows)
 
-        // 6. 生成输出
+        // 6. 生成输出：rewind 到 diff 起始行行首，一次 `ESC[0J` 擦到屏尾，
+        //    原地重写 newTail。
+        //
+        //    不再用「逐行 `ESC[2K` + `\r\n` 擦除 + `ESC[nA` 回移」的循环：
+        //    帧占满整屏时循环最后一发的 `\n` 落到底行之外，触发终端滚动，
+        //    把 startLineIndex 之前未重写的 prefix 行推入 scrollback（丢行），
+        //    且滚动后光标 clamp 在底行，回移计数少算一次滚动，导致重绘
+        //    整体上移一行。`ESC[0J` 只擦不发 `\n`，无滚动语义。
         var output = prevTotalRows > 0 ? "\r" : ""
         if rewindRows > 0 {
             output += "\u{1B}[\(rewindRows)A"
         }
-
-        for _ in 0..<prevTailRows {
-            output += "\u{1B}[2K\r\n"
-        }
-
-        if prevTailRows > 0 {
-            output += "\u{1B}[\(prevTailRows)A"
-        }
+        output += "\u{1B}[0J"
 
         output += newTail.joined(separator: ttyNewline)
         if trailingNewline {
