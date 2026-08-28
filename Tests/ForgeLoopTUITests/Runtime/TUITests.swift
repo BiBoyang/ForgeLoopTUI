@@ -11,9 +11,20 @@ final class TUITests: XCTestCase {
         }
     }
 
+    func testDefaultIsTTProbesRealStdout() {
+        // Unspecified isTTY must resolve to the real stdout TTY state,
+        // not an assumed true (pipes degrade to plain output).
+        let stdoutProbe = StdoutTerminal().isTTY
+        XCTAssertEqual(TUI().isTTY, stdoutProbe)
+        XCTAssertEqual(TUI(writer: { _ in }).isTTY, stdoutProbe)
+        // Explicit values still win over the probe.
+        XCTAssertEqual(TUI(isTTY: true, writer: { _ in }).isTTY, true)
+        XCTAssertEqual(TUI(isTTY: false, writer: { _ in }).isTTY, false)
+    }
+
     func testInlineFirstFrameHasNoClearScreen() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .inlineAnchor, writer: spy.writer)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, writer: spy.writer)
 
         tui.requestRender(lines: ["hello", "world"])
 
@@ -23,7 +34,7 @@ final class TUITests: XCTestCase {
 
     func testInlineNormalizesEmbeddedNewlines() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .inlineAnchor, writer: spy.writer)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, writer: spy.writer)
 
         tui.requestRender(lines: ["hello\nworld"])
 
@@ -32,7 +43,7 @@ final class TUITests: XCTestCase {
 
     func testLegacySupportsCursorOffset() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .legacyAbsolute, writer: spy.writer)
+        let tui = TUI(strategy: .legacyAbsolute, isTTY: true, writer: spy.writer)
 
         tui.requestRender(lines: ["prompt"], cursorOffset: 2)
 
@@ -41,7 +52,7 @@ final class TUITests: XCTestCase {
 
     func testAppendFrameWritesPlainOutput() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .inlineAnchor, writer: spy.writer)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, writer: spy.writer)
 
         tui.appendFrame(lines: ["line1", "line2"])
 
@@ -51,7 +62,7 @@ final class TUITests: XCTestCase {
 
     func testResetRetainedFrameRestartsInlineRendering() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .inlineAnchor, writer: spy.writer)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, writer: spy.writer)
 
         tui.requestRender(lines: ["old"])
         tui.appendFrame(lines: ["stream"])
@@ -63,7 +74,7 @@ final class TUITests: XCTestCase {
 
     func testInlineSameFrameCursorOffsetMovesRelative() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .inlineAnchor, writer: spy.writer)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, writer: spy.writer)
 
         tui.requestRender(lines: ["prompt"], cursorOffset: 2)
         tui.requestRender(lines: ["prompt"], cursorOffset: 1)
@@ -88,6 +99,8 @@ final class TUITests: XCTestCase {
 
     func testVirtualTerminalDefaultsToNonTTYBehavior() {
         let vt = VirtualTerminal()
+        // Deliberately no explicit isTTY: the terminal branch must default
+        // to probing terminal.isTTY (false for VirtualTerminal).
         let tui = TUI(terminal: vt)
 
         tui.requestRender(lines: ["hello", "world"])
@@ -213,7 +226,7 @@ final class TUITests: XCTestCase {
     // MARK: - A1: invalidate() 行为测试
 
     func testInvalidateDoesNotChangeTerminalDimensions() {
-        let tui = TUI(terminalWidth: 80, terminalHeight: 24)
+        let tui = TUI(isTTY: true, terminalWidth: 80, terminalHeight: 24)
         let w = tui.terminalWidth
         let h = tui.terminalHeight
         tui.invalidate()
@@ -222,7 +235,7 @@ final class TUITests: XCTestCase {
     }
 
     func testInvalidateIsIdempotent() {
-        let tui = TUI(terminalWidth: 80, terminalHeight: 24)
+        let tui = TUI(isTTY: true, terminalWidth: 80, terminalHeight: 24)
         // Multiple invalidate calls should not crash or corrupt state
         tui.invalidate()
         tui.invalidate()

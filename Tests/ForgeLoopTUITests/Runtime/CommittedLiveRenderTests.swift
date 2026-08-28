@@ -8,7 +8,7 @@ struct CommittedLiveRenderTests {
 @Test("first render outputs full frame without clear screen")
     func testFirstRenderNoClearScreen() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .inlineAnchor, writer: spy.writer)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, writer: spy.writer)
         tui.render(committed: ["hello"], live: ["world"])
 
         #expect(spy.last == "hello\r\nworld\r\n")
@@ -18,7 +18,7 @@ struct CommittedLiveRenderTests {
     @Test("live region change only redraws from first changed line")
     func testLiveChangeRedrawsFromDiff() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .inlineAnchor, writer: spy.writer)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, writer: spy.writer)
 
         tui.render(committed: ["commit"], live: ["old live"])
         let firstOutput = spy.last
@@ -39,7 +39,7 @@ struct CommittedLiveRenderTests {
     @Test("committed region append leaves live untouched via fast path")
     func testCommitAppendFastPath() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .inlineAnchor, writer: spy.writer)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, writer: spy.writer)
 
         tui.render(committed: ["c1"], live: ["live"])
         let firstOutput = spy.last
@@ -59,7 +59,7 @@ struct CommittedLiveRenderTests {
     @Test("fast path with multiple appended lines and multi-line live")
     func testFastPathMultipleAppendWithMultilineLive() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .inlineAnchor, writer: spy.writer)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, writer: spy.writer)
 
         // live 区 2 行，committed 1 行
         tui.render(committed: ["c1"], live: ["live1", "live2"])
@@ -83,7 +83,7 @@ struct CommittedLiveRenderTests {
     @Test("live budget settles single overflow line into committed")
     func testLiveBudgetSingleLineOverflow() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .inlineAnchor, liveBudget: 2, writer: spy.writer)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, liveBudget: 2, writer: spy.writer)
 
         // 帧1：3 行 live，budget=2 → settle l1 到 committed
         tui.render(committed: ["c1"], live: ["l1", "l2", "l3"])
@@ -99,7 +99,7 @@ struct CommittedLiveRenderTests {
     @Test("live budget settles multi-line overflow into committed")
     func testLiveBudgetMultiLineOverflow() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .inlineAnchor, liveBudget: 2, writer: spy.writer)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, liveBudget: 2, writer: spy.writer)
 
         // 帧1：5 行 live，budget=2 → settle l1,l2,l3
         tui.render(committed: ["c1"], live: ["l1", "l2", "l3", "l4", "l5"])
@@ -119,7 +119,7 @@ struct CommittedLiveRenderTests {
         let spy = OutputSpy()
         // budget=2 physical rows at width=10. Each "0123456789ab" (12 chars) wraps to 2 rows.
         let tui = TUI(
-            strategy: .inlineAnchor,
+            strategy: .inlineAnchor, isTTY: true,
             terminalWidth: 10,
             liveBudget: 2,
             liveBudgetMode: .physicalRows,
@@ -138,7 +138,7 @@ struct CommittedLiveRenderTests {
     func testLiveBudgetPhysicalRowsResizeAddsSettle() {
         let spy = OutputSpy()
         let tui = TUI(
-            strategy: .inlineAnchor,
+            strategy: .inlineAnchor, isTTY: true,
             terminalWidth: 20,
             liveBudget: 3,
             liveBudgetMode: .physicalRows,
@@ -163,7 +163,7 @@ struct CommittedLiveRenderTests {
     @Test("liveBudgetMode .logicalLines is the default and matches historical behaviour")
     func testLiveBudgetModeDefaultLogicalLines() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .inlineAnchor, liveBudget: 2, writer: spy.writer)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, liveBudget: 2, writer: spy.writer)
         #expect(tui.liveBudgetMode == .logicalLines)
 
         tui.render(committed: ["c1"], live: ["l1", "l2", "l3"])
@@ -176,7 +176,7 @@ struct CommittedLiveRenderTests {
     @Test("resize recomputes physical rows for correct diff baseline")
     func testResizeRecomputesPhysicalRows() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .inlineAnchor, terminalWidth: 10, writer: spy.writer)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, terminalWidth: 10, writer: spy.writer)
 
         // 帧1：width=10，"longline" (8 chars) = 1 physical row
         tui.render(committed: ["a"], live: ["longline"])
@@ -197,7 +197,7 @@ struct CommittedLiveRenderTests {
     @Test("resize stress with alternating shrink and render")
     func testResizeStress() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .inlineAnchor, terminalWidth: 20, terminalHeight: 50, writer: spy.writer)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, terminalWidth: 20, terminalHeight: 50, writer: spy.writer)
 
         // 连续 resize + 渲染，不应出现清屏或乱序
         for i in 0..<5 {
@@ -213,7 +213,7 @@ struct CommittedLiveRenderTests {
     @Test("no change with cursor offset only moves cursor")
     func testCursorOffsetOnly() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .inlineAnchor, writer: spy.writer)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, writer: spy.writer)
 
         tui.render(committed: ["prompt"], live: [], cursorOffset: 2)
         tui.render(committed: ["prompt"], live: [], cursorOffset: 1)
@@ -237,7 +237,7 @@ struct CommittedLiveRenderTests {
     @Test("legacy strategy clears screen")
     func testLegacyStrategy() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .legacyAbsolute, writer: spy.writer)
+        let tui = TUI(strategy: .legacyAbsolute, isTTY: true, writer: spy.writer)
 
         tui.render(committed: ["c1"], live: ["l1"])
 
@@ -247,7 +247,7 @@ struct CommittedLiveRenderTests {
     @Test("full redraw fallback when frame exceeds terminal height")
     func testFullRedrawFallback() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .inlineAnchor, terminalHeight: 2, writer: spy.writer)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, terminalHeight: 2, writer: spy.writer)
 
         // 首帧 3 行超过终端高度 2，应回退到 legacy
         tui.render(committed: ["a", "b", "c"], live: ["d"])
@@ -258,7 +258,7 @@ struct CommittedLiveRenderTests {
     @Test("resetRetainedFrame clears commit/live state")
     func testResetClearsState() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .inlineAnchor, writer: spy.writer)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, writer: spy.writer)
 
         tui.render(committed: ["old commit"], live: ["old live"])
         tui.resetRetainedFrame()
@@ -272,7 +272,7 @@ struct CommittedLiveRenderTests {
     @Test("requestRender after render uses synchronized previousLines baseline")
     func testRequestRenderAfterRenderUsesCorrectBaseline() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .inlineAnchor, writer: spy.writer)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, writer: spy.writer)
 
         // Step 1: 通过 render 建立 commit/live 状态
         tui.render(committed: ["shared"], live: ["base"])
@@ -291,7 +291,7 @@ struct CommittedLiveRenderTests {
     func testFallbackThenInlineUsesCorrectBaseline() {
         let spy = OutputSpy()
         // terminalHeight=2，3 行 committed 会触发 fallback
-        let tui = TUI(strategy: .inlineAnchor, terminalHeight: 2, writer: spy.writer)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, terminalHeight: 2, writer: spy.writer)
 
         // Step 1: inline 渲染建立状态
         tui.render(committed: ["a"], live: ["b"])
@@ -317,7 +317,7 @@ struct CommittedLiveRenderTests {
     @Test("cursorPlacement up>0 emits both vertical and horizontal moves")
     func testCursorPlacementEmitsVerticalAndHorizontalMoves() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .inlineAnchor, writer: spy.writer)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, writer: spy.writer)
 
         // Live has two rows; cursor target = row 0 ("hello"), col 2.
         // Last line width = 5 ("world"); target row width = 5 ("hello"); placement.offset = 5 - 2 = 3.
@@ -335,7 +335,7 @@ struct CommittedLiveRenderTests {
     @Test("cursorPlacement up>0 with shorter last line moves right")
     func testCursorPlacementMovesRightWhenLastLineShorter() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .inlineAnchor, writer: spy.writer)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, writer: spy.writer)
 
         // Cursor on row 0 ("alphabet", width 8) at column 6 -> placement.offset = 8 - 6 = 2.
         // Last line ("") width 0; after rendering cursor is at column 0 of last line.
@@ -352,7 +352,7 @@ struct CommittedLiveRenderTests {
     @Test("cursorPlacement up=0 matches cursorOffset behavior")
     func testCursorPlacementUpZeroEquivalentToCursorOffset() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .inlineAnchor, writer: spy.writer)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, writer: spy.writer)
 
         // Single live line; placement.up = 0; placement.offset = 2 should produce ESC[2D and no vertical move.
         tui.render(committed: [], live: ["hello"], cursorPlacement: CursorPlacement(up: 0, offset: 2))
@@ -371,7 +371,7 @@ struct CommittedLiveRenderTests {
     @Test("cursorPlacement undo restores anchor before next render")
     func testCursorPlacementUndoBeforeNextRender() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .inlineAnchor, writer: spy.writer)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, writer: spy.writer)
 
         // Frame 1: place cursor on row 0 of two-line live.
         tui.render(committed: [], live: ["abcde", "xy"], cursorPlacement: CursorPlacement(up: 1, offset: 3))
@@ -401,7 +401,7 @@ struct CommittedLiveRenderTests {
     @Test("ComposedFrame with cursorPlacement is preferred over cursorOffset")
     func testComposedFramePrefersCursorPlacement() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .inlineAnchor, writer: spy.writer)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, writer: spy.writer)
 
         // Both set: placement wins.
         let frame = ComposedFrame(
@@ -425,7 +425,7 @@ struct CommittedLiveRenderTests {
 
     @Test("cursorPositioningMode defaults to .relative")
     func testCursorPositioningModeDefault() {
-        let tui = TUI(strategy: .inlineAnchor)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true)
         #expect(tui.cursorPositioningMode == .relative)
     }
 
@@ -433,7 +433,7 @@ struct CommittedLiveRenderTests {
     func testMarkerSingleLine() {
         let spy = OutputSpy()
         let tui = TUI(
-            strategy: .inlineAnchor,
+            strategy: .inlineAnchor, isTTY: true,
             cursorPositioningMode: .marker,
             writer: spy.writer
         )
@@ -454,7 +454,7 @@ struct CommittedLiveRenderTests {
     func testMarkerMultiLineNoWrap() {
         let spy = OutputSpy()
         let tui = TUI(
-            strategy: .inlineAnchor,
+            strategy: .inlineAnchor, isTTY: true,
             cursorPositioningMode: .marker,
             writer: spy.writer
         )
@@ -474,7 +474,7 @@ struct CommittedLiveRenderTests {
         let spy = OutputSpy()
         // width=5; "abcdefghij" (10 chars) wraps to 2 physical rows.
         let tui = TUI(
-            strategy: .inlineAnchor,
+            strategy: .inlineAnchor, isTTY: true,
             terminalWidth: 5,
             cursorPositioningMode: .marker,
             writer: spy.writer
@@ -496,7 +496,7 @@ struct CommittedLiveRenderTests {
     func testMarkerUndoBeforeNextRender() {
         let spy = OutputSpy()
         let tui = TUI(
-            strategy: .inlineAnchor,
+            strategy: .inlineAnchor, isTTY: true,
             cursorPositioningMode: .marker,
             writer: spy.writer
         )
@@ -531,7 +531,7 @@ struct CommittedLiveRenderTests {
     func testMarkerNoOpOnEmptyLine() {
         let spy = OutputSpy()
         let tui = TUI(
-            strategy: .inlineAnchor,
+            strategy: .inlineAnchor, isTTY: true,
             cursorPositioningMode: .marker,
             writer: spy.writer
         )

@@ -6,6 +6,9 @@ Format and section names follow `docs/semver-and-api-stability.md` (§7).
 
 ## [Unreleased]
 
+### Changed
+- `TUI` init no longer assumes `isTTY == true` when the parameter is omitted: unspecified `isTTY` now probes the real environment (`terminal.isTTY` when a terminal is supplied, otherwise the stdout `isatty` probe shared with `StdoutTerminal`). Piped output therefore degrades to plain (non-ANSI) rendering automatically; callers passing an explicit `isTTY` are unaffected. Library tests that relied on the implicit default now state their TTY intent explicitly.
+
 ### Deprecated
 - The declarative component tree is deprecated as an unverified design with no known production consumers and will be removed in 2.0: `Component`, `AnyComponent`, `VStack`, `ComponentBuilder`, `FrameComposer`, `LayoutBudget` (+ `LiveOverflowPolicy`), `ModalRenderer`, and the `TranscriptComponent` / `TextInputComponent` / `ListPickerComponent` wrappers. Render via `TUI.render(committed:live:…)` or the `TranscriptRenderer`/`CoreRenderEvent` event model instead. The underlying value types (`ComposedFrame`, `ScreenLayout`, `TextInputState`, `ListPickerState`, …) are unaffected.
 

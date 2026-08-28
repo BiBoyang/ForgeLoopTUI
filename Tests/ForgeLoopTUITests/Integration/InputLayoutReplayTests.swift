@@ -16,7 +16,7 @@ struct InputLayoutReplayTests {
     @Test("input + layout replay: stable order, no duplicate key lines, no spurious full clear")
     func testInputLayoutReplayBoundary() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .inlineAnchor, writer: spy.writer)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, writer: spy.writer)
 
         // Step 1: 初始帧 — 空 committed + 输入提示符 live
         tui.render(committed: [], live: ["prompt> "], cursorOffset: 2)
@@ -71,7 +71,7 @@ struct InputLayoutReplayTests {
     @Test("cursor-only replay: same content, varying cursor offset")
     func testCursorOnlyReplay() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .inlineAnchor, writer: spy.writer)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, writer: spy.writer)
 
         tui.render(committed: ["line1"], live: [], cursorOffset: 3)
         tui.render(committed: ["line1"], live: [], cursorOffset: 1)
@@ -93,7 +93,7 @@ struct InputLayoutReplayTests {
     @Test("resize during active input does not trigger spurious full redraw")
     func testResizeDuringInputNoSpuriousFullClear() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .inlineAnchor, terminalWidth: 20, terminalHeight: 50, writer: spy.writer)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, terminalWidth: 20, terminalHeight: 50, writer: spy.writer)
 
         tui.render(committed: ["history-1", "history-2"], live: ["prompt> typing..."])
 
@@ -115,7 +115,7 @@ struct InputLayoutReplayTests {
     @Test("live budget overflow settles without full clear")
     func testLiveBudgetOverflowNoFullClear() {
         let spy = OutputSpy()
-        let tui = TUI(strategy: .inlineAnchor, liveBudget: 1, writer: spy.writer)
+        let tui = TUI(strategy: .inlineAnchor, isTTY: true, liveBudget: 1, writer: spy.writer)
 
         // live 有 3 行，budget=1 → 前 2 行 settle 到 committed
         tui.render(

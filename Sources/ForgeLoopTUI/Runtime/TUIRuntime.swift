@@ -119,6 +119,11 @@ public final class TUI: @unchecked Sendable {
     /// 写入一次后由 ``consumePlacementUndo`` 在下次输出时清空。
     private var pendingPlacementUndoOverride: String? = nil
 
+    /// - Parameter isTTY: When nil (the default), the TTY state is probed
+    ///   from the real environment — `terminal.isTTY` when a terminal is
+    ///   supplied, otherwise the stdout `isatty` probe via `StdoutTerminal`.
+    ///   Piped output therefore degrades to plain (non-ANSI) rendering;
+    ///   pass an explicit value to override the probe.
     public init(
         strategy: RenderStrategy? = nil,
         isTTY: Bool? = nil,
@@ -154,13 +159,15 @@ public final class TUI: @unchecked Sendable {
             self.terminal = terminal
             self.isTTY = isTTY ?? terminal.isTTY
         } else if let writer {
-            let resolvedTTY = isTTY ?? true
+            // Probe the real stdout TTY state when not explicitly specified,
+            // mirroring the StdoutTerminal behavior (pipe → plain output).
+            let resolvedTTY = isTTY ?? StdoutTerminal().isTTY
             self.terminal = WriterTerminal(isTTY: resolvedTTY, capability: .truecolor, writer: writer)
             self.isTTY = resolvedTTY
         } else {
-            let resolvedTTY = isTTY ?? true
-            self.terminal = StdoutTerminal()
-            self.isTTY = resolvedTTY
+            let stdout = StdoutTerminal()
+            self.terminal = stdout
+            self.isTTY = isTTY ?? stdout.isTTY
         }
     }
 
