@@ -285,6 +285,74 @@ struct ANSIParserTests {
         }
     }
 
+    // MARK: - Empty parameter semantics
+
+    @Test("empty first parameter is preserved as 0 (default)")
+    func testEmptyFirstParamBecomesZero() {
+        var parser = ANSIParser()
+        var events: [ANSIParser.Event] = []
+        // ESC[;5H — first param omitted (default), previously dropped so 5
+        // became the row.
+        for scalar in "\u{1B}[;5H".unicodeScalars {
+            parser.feed(scalar) { events.append($0) }
+        }
+        #expect(events.count == 1)
+        if case .csi(let params, _, let command) = events[0] {
+            #expect(command == "H")
+            #expect(params == [0, 5])
+        } else {
+            Issue.record("Expected CSI event")
+        }
+    }
+
+    @Test("all-empty params each become 0")
+    func testAllEmptyParamsBecomeZero() {
+        var parser = ANSIParser()
+        var events: [ANSIParser.Event] = []
+        for scalar in "\u{1B}[;H".unicodeScalars {
+            parser.feed(scalar) { events.append($0) }
+        }
+        #expect(events.count == 1)
+        if case .csi(let params, _, let command) = events[0] {
+            #expect(command == "H")
+            #expect(params == [0, 0])
+        } else {
+            Issue.record("Expected CSI event")
+        }
+    }
+
+    @Test("no parameter bytes at all still yields an empty list")
+    func testNoParamsYieldsEmptyList() {
+        var parser = ANSIParser()
+        var events: [ANSIParser.Event] = []
+        for scalar in "\u{1B}[m".unicodeScalars {
+            parser.feed(scalar) { events.append($0) }
+        }
+        #expect(events.count == 1)
+        if case .csi(let params, _, let command) = events[0] {
+            #expect(command == "m")
+            #expect(params == [])
+        } else {
+            Issue.record("Expected CSI event")
+        }
+    }
+
+    @Test("colon subparameters are flattened like semicolons")
+    func testColonSubparametersFlattened() {
+        var parser = ANSIParser()
+        var events: [ANSIParser.Event] = []
+        for scalar in "\u{1B}[4:3m".unicodeScalars {
+            parser.feed(scalar) { events.append($0) }
+        }
+        #expect(events.count == 1)
+        if case .csi(let params, _, let command) = events[0] {
+            #expect(command == "m")
+            #expect(params == [4, 3])
+        } else {
+            Issue.record("Expected CSI event")
+        }
+    }
+
     // MARK: - Edge cases
 
     @Test("consecutive ESC bytes are discarded")

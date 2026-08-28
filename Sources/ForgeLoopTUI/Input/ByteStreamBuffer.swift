@@ -171,7 +171,8 @@ public final class ByteStreamBuffer: @unchecked Sendable {
 
     private func parseCSIParams(_ bytes: [UInt8]) -> [Int] {
         guard let string = String(bytes: bytes, encoding: .ascii) else { return [] }
-        return string.split(separator: ";").compactMap { Int($0) }
+        // 与 `ANSIParser` 共用同一参数解析，分隔符规则天然一致。
+        return parseCSIParameters(string)
     }
 
     private enum UTF8ParseResult {
@@ -230,7 +231,8 @@ public final class ByteStreamBuffer: @unchecked Sendable {
 public enum InputUnit: Sendable, Equatable {
     /// 可打印字符（含 UTF-8 多字节解析结果）。
     case character(Character)
-    /// CSI 控制序列。
+    /// CSI 控制序列。`params` 的空参数记 0（默认值语义）、`:` 子参数已拍平，
+    /// 与 `ANSIParser.Event.csi` 规则一致。
     case csi(params: [Int], command: Character)
     /// 非 CSI 的 Escape 序列（如 ESC O）。
     case escape(command: Character)

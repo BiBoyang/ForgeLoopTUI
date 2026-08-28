@@ -11,6 +11,8 @@ public struct ANSIParser: Sendable {
         /// 一条已完整解析的 CSI 序列。
         ///
         /// `intermediates` 为中间字节（0x20–0x2F）的拼接字符串，绝大多数 CSI 序列为空。
+        /// `params` 中 `:` 子参数已按 `;` 同样规则拍平；空参数按 ECMA-48
+        /// 惯例记为 0（0 = 该参数的默认值），由消费方按命令映射具体默认值。
         case csi(params: [Int], intermediates: String, command: Character)
     }
 
@@ -78,7 +80,7 @@ public struct ANSIParser: Sendable {
                 state = .csiIntermediate
                 intermediateBuffer = String(scalar)
             } else if isFinalByte(scalar) {
-                let params = parseParams(paramBuffer)
+                let params = parseCSIParameters(paramBuffer)
                 emit(.csi(params: params, intermediates: intermediateBuffer, command: Character(scalar)))
                 resetCSIBuffers()
                 state = .ground
@@ -92,7 +94,7 @@ public struct ANSIParser: Sendable {
             if isIntermediateByte(scalar) {
                 intermediateBuffer.append(Character(scalar))
             } else if isFinalByte(scalar) {
-                let params = parseParams(paramBuffer)
+                let params = parseCSIParameters(paramBuffer)
                 emit(.csi(params: params, intermediates: intermediateBuffer, command: Character(scalar)))
                 resetCSIBuffers()
                 state = .ground
@@ -120,12 +122,21 @@ public struct ANSIParser: Sendable {
         scalar >= "@" && scalar <= "~"
     }
 
-    private func parseParams(_ string: String) -> [Int] {
-        string.split(whereSeparator: { $0 == ";" || $0 == ":" }).compactMap { Int($0) }
-    }
-
     private mutating func resetCSIBuffers() {
         paramBuffer = ""
         intermediateBuffer = ""
     }
+}
+
+/// 解析 CSI 参数段为参数列表。`ANSIParser` 与 `ByteStreamBuffer` 共用此函数，
+/// 从结构上保证两端分隔符规则一致。
+///
+/// 规则：`;` 分隔参数，`:` 分隔子参数（拍平进同一列表）；空参数按 ECMA-48
+/// 惯例记为 0（0 = 使用该参数的默认值），由消费方按命令映射具体默认值；
+/// 非数字参数段（如 DEC 私有前缀 `?`）丢弃。
+func parseCSIParameters(_ string: String) -> [Int] {
+    guard !string.isEmpty else { return [] }
+    return string
+        .split(omittingEmptySubsequences: false) { $0 == ";" || $0 == ":" }
+        .compactMap { $0.isEmpty ? 0 : Int($0) }
 }

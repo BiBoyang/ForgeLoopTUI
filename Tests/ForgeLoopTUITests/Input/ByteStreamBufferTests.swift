@@ -34,6 +34,40 @@ struct ByteStreamBufferTests {
         #expect(units[0] == .csi(params: [1, 3], command: "m"))
     }
 
+    @Test("CSI empty first parameter is preserved as 0 (default)")
+    func testCSIEmptyFirstParamBecomesZero() {
+        let buf = ByteStreamBuffer()
+        // ESC[;5H — matches ANSIParser: omitted param becomes 0, not dropped.
+        let units = buf.feed([0x1B, 0x5B, 0x3B, 0x35, 0x48])
+        #expect(units.count == 1)
+        #expect(units[0] == .csi(params: [0, 5], command: "H"))
+    }
+
+    @Test("CSI colon subparameters are flattened like semicolons")
+    func testCSIColonSubparameters() {
+        let buf = ByteStreamBuffer()
+        // ESC[4:3m — previously the whole "4:3" segment was dropped.
+        let units = buf.feed([0x1B, 0x5B, 0x34, 0x3A, 0x33, 0x6D])
+        #expect(units.count == 1)
+        #expect(units[0] == .csi(params: [4, 3], command: "m"))
+    }
+
+    @Test("CSI mixed semicolon and colon params match ANSIParser")
+    func testCSIMixedSeparators() {
+        let buf = ByteStreamBuffer()
+        let units = buf.feed([0x1B, 0x5B, 0x31, 0x3B, 0x32, 0x3A, 0x33, 0x6D]) // ESC[1;2:3m
+        #expect(units.count == 1)
+        #expect(units[0] == .csi(params: [1, 2, 3], command: "m"))
+    }
+
+    @Test("CSI with no parameter bytes yields empty params")
+    func testCSINoParams() {
+        let buf = ByteStreamBuffer()
+        let units = buf.feed([0x1B, 0x5B, 0x6D]) // ESC[m
+        #expect(units.count == 1)
+        #expect(units[0] == .csi(params: [], command: "m"))
+    }
+
     @Test("ESC split across two feeds")
     func testSplitESC() {
         let buf = ByteStreamBuffer()
