@@ -7,6 +7,13 @@ import Foundation
 /// - `.immediate`：立即渲染当前最新帧，不等待 tick。
 ///
 /// timer 在每个 tick 触发 flush；flush 后若队列为空则停止 timer，避免空转。
+///
+/// Concurrency contract: `render` invocations are **not** serialized by this
+/// class. The closure runs on the submitting caller's context for `.immediate`
+/// submissions and on the timer's `@MainActor` task for coalesced frames, so
+/// concurrent invocations are possible (racing `.immediate` submissions, or an
+/// `.immediate` submission racing a tick). The closure must be thread-safe —
+/// this is the basis for `RenderLoop`'s `@unchecked Sendable` conformance.
 public final class RenderLoop: @unchecked Sendable {
     public enum Priority: Sendable, Equatable {
         case normal
