@@ -36,10 +36,12 @@ public final class TranscriptRenderer {
     ///
     /// Block events are single-active-block: a new `blockStart` implicitly
     /// finalizes the previous block, and `blockUpdate`/`blockEnd`/
-    /// `blockCancel` with a non-matching id are ignored. A `blockEnd` or
-    /// `blockCancel` arriving with no open block (e.g. a late event after
-    /// cancellation) is ignored too; only `blockUpdate` implicitly adopts
-    /// the id and starts a block (legacy usage).
+    /// `blockCancel` with a non-matching id are ignored. A `blockEnd`
+    /// arriving with no open block (e.g. a late event after cancellation)
+    /// is ignored too; only `blockUpdate` implicitly adopts the id and
+    /// starts a block (legacy usage). A `blockCancel` with no open block
+    /// still takes the lenient append path — not yet tightened (tracked as
+    /// a follow-up).
     private var activeBlockID: String?
     private let markdownEngine: MarkdownEngine
     private let options: TranscriptRenderOptions
