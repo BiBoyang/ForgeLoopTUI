@@ -74,4 +74,13 @@ final class PublicAPISmokeTests: XCTestCase {
         XCTAssertEqual(pickerLines.first, "Select a model")
         XCTAssertTrue(pickerLines.contains("● gpt-4o"))
     }
+
+    func testWidthSurfaceIsPublicAndANSIAware() {
+        // `visibleWidth` / `ansiStripped` are public API; this file imports
+        // ForgeLoopTUI without @testable, so compiling is the assertion.
+        XCTAssertEqual(ansiStripped("\u{1B}[31m红\u{1B}[0m"), "红")
+        XCTAssertEqual(visibleWidth("\u{1B}[31m红\u{1B}[0m"), 2)
+        XCTAssertEqual(visibleWidth("a中b"), 4)
+        XCTAssertEqual(visibleWidth("👨‍👩‍👧‍👦"), 2)
+    }
 }

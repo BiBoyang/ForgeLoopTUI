@@ -1,6 +1,12 @@
 import Foundation
 
-func ansiStripped(_ text: String) -> String {
+/// Returns `text` with ANSI CSI escape sequences removed.
+///
+/// A CSI sequence spans `ESC [`, any parameter/intermediate bytes, and one
+/// final byte in `0x40...0x7E`. An unterminated trailing CSI is dropped
+/// together with the remainder of the string; other escape sequences are
+/// preserved verbatim. Useful when measuring or laying out styled text.
+public func ansiStripped(_ text: String) -> String {
     var result = ""
     var index = text.startIndex
     while index < text.endIndex {
@@ -29,7 +35,15 @@ func ansiStripped(_ text: String) -> String {
     return result
 }
 
-func visibleWidth(_ text: String) -> Int {
+/// The number of terminal cells `text` occupies when rendered.
+///
+/// ANSI CSI sequences are stripped first (see ``ansiStripped(_:)``), then the
+/// remaining text is measured per grapheme cluster: ASCII control characters
+/// and combining marks count 0, wide scalars (CJK, fullwidth forms, most
+/// emoji) count 2, and multi-scalar clusters that render as a single glyph —
+/// ZWJ sequences, skin-tone modifiers, VS16 emoji presentation, RI flag
+/// pairs — count 2 as a whole. Everything else counts 1.
+public func visibleWidth(_ text: String) -> Int {
     let stripped = ansiStripped(text)
     // Fast path: pure ASCII has no grapheme-cluster subtleties — every
     // printable scalar occupies exactly one cell.

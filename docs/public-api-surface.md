@@ -234,12 +234,15 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 | Type | Kind | Stability | Breaking-change risk | Migration advice |
 |------|------|-----------|----------------------|------------------|
 | `SGRState` | `struct` | **Provisional** | Medium | May gain new attributes (italic, underline, strikethrough) |
+| `visibleWidth(_:)` | `func` | **Stable** | Low | ANSI-aware terminal-cell width measured per grapheme cluster (wide CJK/emoji 2 cells, combining marks 0); replaces hand-written width helpers in consumers |
+| `ansiStripped(_:)` | `func` | **Stable** | Low | CSI escape stripping backing `visibleWidth(_:)`; replaces hand-written strippers in consumers |
 | `ANSIParser` | `struct` | **Internal-detail** | High | State machine; consumers should use `Terminal` protocol |
 | `ANSIParser.Event` | `enum` | **Internal-detail** | High | Parser events |
 | `physicalRows(for:width:)` | `func` | **Internal-detail** | High | Use `LayoutBudget` / `ScreenLayoutRenderer` instead |
 
 **Consumer dependency points:**
 - `SGRState` + `Color` — if building custom ANSI-aware components.
+- `visibleWidth(_:)` / `ansiStripped(_:)` — ANSI-aware width measurement and CSI stripping for custom layout math.
 - Prefer `Terminal` protocol and `VirtualTerminal` over direct `ANSIParser` usage.
 
 ---
@@ -248,7 +251,7 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 
 | Stability level | Count | Recommendation |
 |-----------------|-------|----------------|
-| **Stable** | ~67 | Safe to depend on; breaking changes require MAJOR bump |
+| **Stable** | ~69 | Safe to depend on; breaking changes require MAJOR bump |
 | **Provisional** | ~12 | Safe to adopt; monitor release notes for MINOR evolutions |
 | **Internal-detail** | ~13 | Avoid direct dependency; may change without SemVer protection |
 | **Deprecated** | 3 | Migrate to `CoreRenderEvent` / `TranscriptRenderer.applyCore(_:)` |

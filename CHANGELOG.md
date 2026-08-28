@@ -7,6 +7,7 @@ Format and section names follow `docs/semver-and-api-stability.md` (§7).
 ## [Unreleased]
 
 ### Added
+- `visibleWidth(_:)` and `ansiStripped(_:)` are now public: ANSI-aware terminal-cell width measurement (per grapheme cluster; wide CJK/emoji 2 cells, combining marks 0) and CSI escape stripping. They are the implementations already used by `MultiLineInputState`, `physicalRows(for:width:)`, and `TUI` cursor placement, and replace hand-written duplicates in consumers (e.g. ForgeLoop's rendering helpers).
 - `StdoutTerminal.onWriteFailure` and `RawTTY.onRestoreFailure`: optional hooks reporting the failing `errno` for stdout writes and termios restores — the reporting channel for the documented "Terminal.write does not throw" limitation (see `docs/known-limitations.md`).
 
 ### Fixed
