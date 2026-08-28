@@ -162,16 +162,28 @@ func shouldCoalesceWithRenderLoop(
 
 ## 5. Composition Without ScreenLayout
 
+> **Deprecated:** the declarative component tree (`Component`, `VStack`, `ComponentBuilder`, `FrameComposer`, `TranscriptComponent`, `TextInputComponent`, `ListPickerComponent`, `ModalRenderer`, `LayoutBudget`) is an unverified design with no known production consumers and will be removed in 2.0. Prefer driving `TUI.render(committed:live:…)` directly, or the `TranscriptRenderer` / `CoreRenderEvent` event model. The examples below are retained for migration reference only and now compile with deprecation warnings.
+
 For apps that do not fit the `ScreenLayout` model, use `FrameComposer` + `Component`:
 
 ```swift
-let composer = FrameComposer(
-    committed: [AnyComponent(TranscriptComponent(renderer: renderer))],
-    live: [AnyComponent(InputComponent(state: inputState))],
-    layoutBudget: LayoutBudget(maxRows: 24, overflowMarker: "…")
-)
-let frame = composer.render(width: 80, cursorOffset: inputState.cursorOffset)
-tui.render(frame: frame)
+import ForgeLoopTUI
+
+@MainActor
+func composeFrame(renderer: TranscriptRenderer, inputState: inout TextInputState, tui: TUI) {
+    // TranscriptComponent.getLines is `@Sendable`: capture a value snapshot
+    // rather than the @MainActor-isolated renderer itself.
+    let transcriptLines = renderer.transcriptLines
+    let renderedInput = inputState.render(prefix: "> ", totalWidth: 80)
+
+    let composer = FrameComposer(
+        committed: [AnyComponent(TranscriptComponent(getLines: { transcriptLines }))],
+        live: [AnyComponent(TextInputComponent(prompt: "> ", value: inputState.text))],
+        layoutBudget: LayoutBudget(maxRows: 24, overflowMarker: "…")
+    )
+    let frame = composer.render(width: 80, cursorOffset: renderedInput.cursorOffset)
+    tui.render(frame: frame)
+}
 ```
 
 ### Live overflow policy
@@ -182,6 +194,8 @@ tui.render(frame: frame)
 - `.settleThenClip` *(recommended for streaming apps)*: the same settlement algorithm used by `TUI.liveBudget` first moves overflowing live lines into the tail of `committed`; the final tail-clip then runs on the consolidated buffer. The settled lines become real committed history before any clipping, so the commit/live boundary stays semantically meaningful.
 
 > **Note:** settlement does **not** bypass the final tail-clip. If `committed + live` is still over `maxRows` after settling, the subsequent clip pass can drop settled content too — the difference between `.clipOnly` and `.settleThenClip` is only in *which* lines are treated as committed history while the clip runs, not in whether anything is ultimately retained.
+
+The snippet below is a partial excerpt (continuation of the example above) with placeholder regions; it does not compile standalone.
 
 ```swift
 let composer = FrameComposer(
@@ -207,7 +221,7 @@ Pair `.settleThenClip` with `TUI(liveBudget:liveBudgetMode:.physicalRows)` if yo
 let vt = VirtualTerminal(width: 80, height: 24)
 let tui = TUI(strategy: .inlineAnchor, terminal: vt)
 tui.render(frame: frame)
-// Assert on vt.grid, vt.cursorRow, vt.cursorCol
+// Assert on vt.screenCells / vt.screenLines, vt.cursorRow, vt.cursorCol
 ```
 
 ---

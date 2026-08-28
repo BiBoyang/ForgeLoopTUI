@@ -1,6 +1,6 @@
 # Markdown Table Rendering Policy
 
-Date: 2026-04-25
+Date: 2026-04-25 (updated 2026-08-28: `WideTableStrategy` / `TableStreamingBehavior`)
 Scope: `ForgeLoopTUI` Markdown rendering
 
 ## Background
@@ -26,6 +26,8 @@ New public API:
 - `MarkdownRenderOptions`
 - `TableRenderPolicy`
 - `TableOverflowBehavior`
+- `WideTableStrategy` *(added 2026-08-28 refresh)*
+- `TableStreamingBehavior` *(added 2026-08-28 refresh)*
 - `StreamingMarkdownEngine(options:)`
 - `TranscriptRenderer(markdownOptions:)`
 
@@ -64,23 +66,27 @@ That means a consuming app such as `ForgeLoop` can decide how aggressive or cons
 ```swift
 import ForgeLoopTUI
 
-let options = MarkdownRenderOptions(
-    tablePolicy: TableRenderPolicy(
-        maxRenderedWidth: 96,
-        minColumnWidth: 6,
-        maxColumnWidth: 28,
-        truncationIndicator: "...",
-        overflowBehavior: .compactThenTruncateThenDegrade
+// TranscriptRenderer is @MainActor-isolated; configure it on the main actor.
+@MainActor
+func makeTableRenderer() -> TranscriptRenderer {
+    let options = MarkdownRenderOptions(
+        tablePolicy: TableRenderPolicy(
+            maxRenderedWidth: 96,
+            minColumnWidth: 6,
+            maxColumnWidth: 28,
+            truncationIndicator: "...",
+            overflowBehavior: .compactThenTruncateThenDegrade
+        )
     )
-)
-
-let renderer = TranscriptRenderer(markdownOptions: options)
+    return TranscriptRenderer(markdownOptions: options)
+}
 ```
 
-If you want the old behavior, use:
+If you want the old behavior (continuation of the example above — same import
+and `@MainActor` context):
 
 ```swift
-let renderer = TranscriptRenderer(
+let legacyRenderer = TranscriptRenderer(
     markdownOptions: .init(
         tablePolicy: .init(
             maxRenderedWidth: 80,
@@ -92,6 +98,32 @@ let renderer = TranscriptRenderer(
     )
 )
 ```
+
+## Wide-Table Readability Strategy
+
+`TableRenderPolicy.wideTableStrategy` controls what happens when box-drawing
+readability suffers under heavy truncation:
+
+- `.alwaysBox` *(library default)* — always render as a box table, even when
+  heavily truncated. Keeps the historical zero-regression behavior.
+- `.autoReadable` — degrade to raw Markdown when readability would be poor,
+  judged by two tunable thresholds:
+  - `autoReadableTruncatedCellThreshold` (default `0.4`) — how much cell
+    truncation is tolerated before the table is considered unreadable.
+  - `autoReadableTrimmedWidthThreshold` (default `0.3`) — how much overall
+    width trimming is tolerated.
+
+Consumers opt into `.autoReadable` explicitly; the default stays `.alwaysBox`.
+
+## Streaming Behavior for Incomplete Tables
+
+`MarkdownRenderOptions.tableStreamingBehavior` controls how a table is
+presented while its rows are still streaming in:
+
+- `.monotonic` *(default)* — parse and render currently valid rows without
+  regressing to raw Markdown while the last row is incomplete.
+- `.strict` — keep raw Markdown until the current table block is fully
+  terminated.
 
 ## Compatibility Notes
 

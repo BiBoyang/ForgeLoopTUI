@@ -206,23 +206,26 @@ If your app wants different behavior when calling `ForgeLoopTUI`, configure it a
 ```swift
 import ForgeLoopTUI
 
-let options = MarkdownRenderOptions(
-    tablePolicy: TableRenderPolicy(
-        maxRenderedWidth: 96,
-        minColumnWidth: 6,
-        maxColumnWidth: 28,
-        truncationIndicator: "...",
-        overflowBehavior: .compactThenTruncateThenDegrade
+// TranscriptRenderer is @MainActor-isolated; configure it on the main actor.
+@MainActor
+func makeTableRenderer() -> TranscriptRenderer {
+    let options = MarkdownRenderOptions(
+        tablePolicy: TableRenderPolicy(
+            maxRenderedWidth: 96,
+            minColumnWidth: 6,
+            maxColumnWidth: 28,
+            truncationIndicator: "...",
+            overflowBehavior: .compactThenTruncateThenDegrade
+        )
     )
-)
-
-let renderer = TranscriptRenderer(markdownOptions: options)
+    return TranscriptRenderer(markdownOptions: options)
+}
 ```
 
-If you prefer the old “too wide means keep raw Markdown” behavior:
+If you prefer the old “too wide means keep raw Markdown” behavior (continuation of the example above — same import and `@MainActor` context):
 
 ```swift
-let renderer = TranscriptRenderer(
+let legacyRenderer = TranscriptRenderer(
     markdownOptions: .init(
         tablePolicy: .init(
             maxRenderedWidth: 80,

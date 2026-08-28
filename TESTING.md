@@ -56,7 +56,7 @@ This verifies:
 
 Use when changing:
 
-- `Sources/ForgeLoopTUI/Style.swift`
+- `Sources/ForgeLoopTUI/Style/Style.swift`
 - ANSI-related width or rendering behavior
 
 Command:
@@ -75,7 +75,7 @@ This verifies:
 
 Use when changing:
 
-- `Sources/ForgeLoopTUI/TextInput.swift`
+- `Sources/ForgeLoopTUI/Components/InputComponent.swift` (defines `TextInputState`)
 
 Command:
 
@@ -94,7 +94,7 @@ This verifies:
 
 Use when changing:
 
-- `Sources/ForgeLoopTUI/Modal.swift`
+- `Sources/ForgeLoopTUI/Components/ModalHost.swift` (defines `ModalRenderer`)
 
 Command:
 
@@ -112,8 +112,8 @@ This verifies:
 
 Use when changing:
 
-- `Sources/ForgeLoopTUI/TranscriptRenderer.swift`
-- `Sources/ForgeLoopTUI/RenderEvents.swift`
+- `Sources/ForgeLoopTUI/Transcript/TranscriptRenderer.swift`
+- `Sources/ForgeLoopTUI/Transcript/RenderEvents.swift`
 
 Commands:
 
@@ -136,7 +136,7 @@ This verifies:
 
 Use when changing:
 
-- `Sources/ForgeLoopTUI/StreamingTranscriptAppendState.swift`
+- `Sources/ForgeLoopTUI/Transcript/StreamingTranscriptAppendState.swift`
 
 Command:
 

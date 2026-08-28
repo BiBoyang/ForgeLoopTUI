@@ -33,7 +33,7 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 - `TUI.render(frame:)` — the primary output path.
 - `TUI.render(committed:live:cursorOffset:)` — two-region path.
 - `TUI.render(committed:live:cursorPlacement:)` — two-region path with 2D cursor positioning.
-- `RenderLoop.submit(committed:priority:)` — coalescing optimization.
+- `RenderLoop.submit(frame:priority:)` — coalescing optimization.
 
 ---
 
@@ -142,7 +142,7 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 | `withUTF8EraseFlag(_:)` | `func` | **Internal-detail** | High | TTY flag helper |
 
 **Consumer dependency points:**
-- `InputReader.start(handler:)` / `InputReader.stop()` — event-loop integration.
+- `InputReader(onEvent:)` + `InputReader.start()` / `InputReader.stop()` — event-loop integration.
 - `KeyEvent.key` + `KeyEvent.modifiers` — key handling.
 - `KeybindingRegistry().register(_:action:)` — declarative app-side commands.
 - `KeyResolver(registry:).feed(_:)` / `.tick()` — chord-aware resolution of input.
@@ -172,6 +172,15 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 ---
 
 ## 7. Bridge / AppKit (`Bridge/AppKit/`)
+
+> Name vs. reality: despite the "Bridge" name, this layer is a **dual-projection
+> data model** — one `HybridRenderState` projected by `HybridRenderAdapter` to
+> both a terminal `ScreenLayout`/`ComposedFrame` and an AppKit panel model —
+> plus an `NSEvent` → `KeyEvent` adapter (`AppKitEventAdapter`) and an
+> `@Observable` state wrapper (`HybridObservableState`). It is not a UI bridge,
+> and it makes the package depend on AppKit unconditionally. A future split
+> into a core library plus an optional AppKit add-on target is planned and
+> will be tracked as a separate project.
 
 | Type | Kind | Stability | Breaking-change risk | Migration advice |
 |------|------|-----------|----------------------|------------------|
@@ -223,7 +232,7 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 | `prefixedLogicalLines(prefix:text:)` | `func` | **Internal-detail** | High | Use `MarkdownEngine` instead |
 
 **Consumer dependency points:**
-- `StreamingMarkdownEngine(options:).render(lines:width:)` — primary rendering.
+- `StreamingMarkdownEngine(options:).render(text:isFinal:)` — primary rendering.
 - `MarkdownRenderOptions(tablePolicy:)` — table behavior tuning.
 - `TranscriptRenderer(markdownOptions:)` — inject into transcript pipeline.
 
