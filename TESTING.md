@@ -52,6 +52,66 @@ This verifies:
 - **live budget overflow**: automatic settlement of old live lines into committed
 - **resize-safe anchoring**: physical row recomputation on terminal resize
 
+### `DisplayWidth`
+
+Use when changing:
+
+- `Sources/ForgeLoopTUI/ANSI/DisplayWidth.swift` (visible width, ANSI stripping, wide-scalar table)
+
+Command:
+
+```bash
+swift test --filter DisplayWidthTests
+```
+
+This verifies:
+
+- ASCII / control-character cell accounting
+- per-grapheme-cluster width: ZWJ sequences, skin-tone modifiers, VS16 presentation, regional-indicator flags
+- wide-scalar coverage against the Unicode 16.0 table (CJK, fullwidth forms, emoji from Unicode 14–16 blocks)
+- consistency between `visibleWidth` and per-cluster summation, and `MultiLineInputState` cursor offsets
+
+### `RenderLoop`
+
+Use when changing:
+
+- `Sources/ForgeLoopTUI/Runtime/RenderLoop.swift`
+
+Command:
+
+```bash
+swift test --filter RenderLoopTests
+```
+
+This verifies:
+
+- submit/flush/stop lifecycle
+- coalescing of `.normal` submits within one tick
+- `.immediate` bypasses the timer
+- idle-flush and restart-after-idle behavior
+
+### `TUI` concurrency (ThreadSanitizer)
+
+Use when changing:
+
+- `Sources/ForgeLoopTUI/Runtime/TUIRuntime.swift` (locks, shared state, `updateTerminalSize`)
+- anything touching `TUI`'s `@unchecked Sendable` contract
+
+Command:
+
+```bash
+swift test --sanitize=thread --filter TUIRuntimeConcurrencyTests
+```
+
+This verifies, under TSan:
+
+- concurrent render passes are fully serialized (no interleaved/garbled frames)
+- cursor-placement undo state survives concurrent renders
+- `diagnosticsHandler` concurrent set/read is race-free
+- concurrent resize + render + dimension reads are race-free (`terminalWidth`/`terminalHeight` leaf-lock contract)
+
+Run this suite with `--sanitize=thread` whenever you touch locking in `TUIRuntime`; a plain `swift test` run does not exercise the races.
+
 ### `Style`
 
 Use when changing:
@@ -309,6 +369,13 @@ cd ../MarkdownShowcase
 swift run
 ```
 
+### Concurrency / locking changes in `TUIRuntime`
+
+```bash
+swift test --sanitize=thread --filter TUIRuntimeConcurrencyTests
+swift test
+```
+
 ### Streaming planner changes
 
 ```bash
@@ -368,6 +435,9 @@ FORGELOOP_ROOT=/absolute/path/to/ForgeLoop ./Scripts/cross-repo-gate.sh --full
 When something fails, use this rule of thumb:
 
 - `TUITests` failures usually mean rendering strategy or terminal semantics changed
+- `DisplayWidthTests` failures usually mean width accounting or the wide-scalar table changed
+- `RenderLoopTests` failures usually mean the submit/flush/coalescing contract changed
+- `TUIRuntimeConcurrencyTests` failures (TSan reports) usually mean a lock-order or shared-state contract broke — check the `renderLock → lock → dimsLock` ordering before anything else
 - `TranscriptRendererTests` failures usually mean transcript/event semantics changed
 - `StreamingTranscriptAppendStateTests` failures usually mean append-only streaming semantics changed
 - `MinimalStreamingDemo` failures usually mean a public API or integration contract regressed
