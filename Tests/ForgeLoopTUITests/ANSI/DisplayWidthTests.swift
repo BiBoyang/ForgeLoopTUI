@@ -34,6 +34,30 @@ struct DisplayWidthTests {
         #expect(visibleWidth("a🚀b") == 4)
     }
 
+    @Test("Unicode 14-16 emoji blocks count as two cells")
+    func testUnicode14to16EmojiBlocks() {
+        // Sampled across the blocks added since the previous table snapshot.
+        #expect(visibleWidth("\u{1FAE0}") == 2) // melting face (14.0)
+        #expect(visibleWidth("\u{1FA77}") == 2) // coral (15.0)
+        #expect(visibleWidth("\u{1FAE9}") == 2) // face with bags under eyes (16.0)
+        #expect(visibleWidth("\u{1F6DC}") == 2) // wireless (13.1)
+        #expect(visibleWidth("\u{1F7F0}") == 2) // heavy equals sign (14.0)
+        #expect(visibleWidth("\u{1FA83}") == 2) // harpoon (15.1)
+        #expect(visibleWidth("a\u{1FAE0}b") == 4)
+    }
+
+    @Test("Unicode 16.0 East Asian wide additions count as two cells")
+    func testEastAsianWideRefresh() {
+        #expect(visibleWidth("\u{32FF}") == 2) // square era name reiwa
+        #expect(visibleWidth("\u{4DC0}") == 2) // yijing hexagram for the creative heaven
+        #expect(visibleWidth("\u{2630}") == 2) // trigram for heaven
+    }
+
+    @Test("text-default emoji stays narrow without VS16")
+    func testTextDefaultEmojiStaysNarrow() {
+        #expect(visibleWidth("\u{1F321}") == 1) // thermometer needs VS16 for wide presentation
+    }
+
     // MARK: - Grapheme clusters
 
     @Test("ZWJ emoji sequence counts as two cells, not the sum of its parts")
