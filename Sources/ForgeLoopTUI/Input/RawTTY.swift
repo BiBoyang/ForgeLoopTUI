@@ -1,25 +1,22 @@
 import Foundation
 
-#if canImport(Darwin)
 import Darwin
-#elseif canImport(Glibc)
-import Glibc
-#endif
 
-/// Raw TTY 生命周期管理：进入 raw mode 并在退出/异常时恢复终端属性。
+/// Raw TTY lifecycle management: enters raw mode and restores the terminal
+/// attributes on exit or failure.
 ///
-/// 用法（RAII 模式）：
+/// Usage (RAII style):
 /// ```swift
 /// let tty = RawTTY()
 /// try tty.enter()
 /// defer { tty.restore() }
-/// // ... 读取原始输入 ...
+/// // ... read raw input ...
 /// ```
 ///
-/// 用法（闭包模式）：
+/// Usage (closure style):
 /// ```swift
 /// try withRawTTY { tty in
-///     // ... 读取原始输入 ...
+///     // ... read raw input ...
 /// }
 /// ```
 public final class RawTTY: @unchecked Sendable {

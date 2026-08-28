@@ -1,22 +1,19 @@
 import Foundation
 import Dispatch
 
-#if canImport(Darwin)
 import Darwin
-#elseif canImport(Glibc)
-import Glibc
-#endif
 
-/// 高阶输入读取器：将 `RawTTY`、`InputPipeline` 和事件循环调度封装为
-/// 一个可直接启动/停止的组件。
+/// High-level input reader: wraps `RawTTY`, `InputPipeline`, and event-loop
+/// scheduling into a component that can be started and stopped directly.
 ///
-/// 内部使用 `DispatchSourceRead` 监听 stdin，`DispatchSourceTimer`
-/// 以 10ms 周期调用 `InputPipeline.tick()` 解决 ESC/Alt 歧义。
+/// Internally it uses a `DispatchSourceRead` to watch stdin and a
+/// `DispatchSourceTimer` that calls `InputPipeline.tick()` every 10ms to
+/// resolve the ESC/Alt ambiguity.
 ///
-/// 支持多次 `start()` / `stop()`：每次 `start()` 都会重新进入 raw mode，
-/// `stop()` 恢复终端属性。
+/// Supports multiple `start()` / `stop()` cycles: each `start()` re-enters
+/// raw mode, and `stop()` restores the terminal attributes.
 ///
-/// 用法：
+/// Usage:
 /// ```swift
 /// let reader = try InputReader { events in
 ///     for event in events { print(event) }

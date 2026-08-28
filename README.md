@@ -69,7 +69,12 @@ It provides:
 ## Requirements
 
 - Swift 6
-- macOS 14+
+
+| Platform | Support |
+|----------|---------|
+| macOS    | 14+ (supported) |
+| Linux    | Not supported — the library targets Darwin directly (TTY ioctls, AppKit bridge) |
+| Windows  | Not supported |
 
 ## Install (SwiftPM)
 

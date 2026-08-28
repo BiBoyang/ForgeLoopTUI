@@ -1,10 +1,6 @@
 import Foundation
 
-#if canImport(Darwin)
 import Darwin
-#elseif canImport(Glibc)
-import Glibc
-#endif
 
 public struct TerminalSize: Sendable, Equatable {
     public let rows: Int
