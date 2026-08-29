@@ -11,8 +11,12 @@ import Foundation
 /// - Block-level tags (`div`, `table`, `tr`, `p`, `ul`, `li`, `details`,
 ///   `summary`, `h1`–`h6`, `br`) become line breaks; consecutive breaks
 ///   collapse (empty segments are dropped).
-/// - Every other well-formed tag (e.g. `span`, `kbd`, `td`, `th`, `img`) is
-///   removed together with its attribute string — attributes never leak.
+/// - Table cell tags (`td`, `th`, opening and closing) degrade to a single
+///   separating space, so adjacent cells stay readable
+///   (`DB_HOST 192.168.1.53` instead of `DB_HOST192.168.1.53`); runs of
+///   whitespace collapse and segment ends trim in `postProcess`.
+/// - Every other well-formed tag (e.g. `span`, `kbd`, `img`) is removed
+///   together with its attribute string — attributes never leak.
 /// - `<summary>` content survives on its own line because `summary` is a
 ///   break tag around it (details/summary prefix line).
 /// - Named entities (`&amp; &lt; &gt; &quot; &#39; &nbsp;`) decode after tag
@@ -35,6 +39,11 @@ enum HTMLDegrader {
         "div", "table", "tr", "p", "ul", "li", "details", "summary",
         "h1", "h2", "h3", "h4", "h5", "h6", "br",
     ]
+
+    /// Table cell tags degrade to a separating space (opening and closing
+    /// alike) so adjacent cells never concatenate. `tr` stays a line break,
+    /// so rows still split onto their own lines.
+    private static let cellSeparatorTags: Set<String> = ["td", "th"]
 
     /// Post-strip entity decoding (single left-to-right pass, no re-parse).
     private static let namedEntities: [String: String] = [
@@ -149,6 +158,8 @@ enum HTMLDegrader {
                     sawTag = true
                     if blockLevelTags.contains(name) {
                         segments.append("")
+                    } else if cellSeparatorTags.contains(name) {
+                        segments[segments.count - 1].append(" ")
                     }
                     index = line.index(after: endIndex)
                     continue
@@ -205,14 +216,41 @@ enum HTMLDegrader {
         return .unclosed(name: name)
     }
 
-    /// Trims segments and drops empties (collapsing consecutive tag breaks).
-    /// Tag-free lines never reach this — both `degrade` entry points
-    /// early-return them byte-identical.
+    /// Collapses whitespace runs inside each segment (cell-separator spaces
+    /// plus any source spacing), trims the ends, and drops empties
+    /// (collapsing consecutive tag breaks). Tag-free lines never reach
+    /// this — both `degrade` entry points early-return them byte-identical.
     private static func postProcess(_ segments: [String], decodeEntities: Bool) -> [String] {
         segments
             .map { decodeEntities ? Self.decodeEntities(in: $0) : $0 }
+            .map { Self.collapseWhitespace(in: $0) }
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
+    }
+
+    /// Collapses every run of spaces/tabs to a single space. Interior only —
+    /// leading/trailing whitespace is left for the trimming step.
+    private static func collapseWhitespace(in text: String) -> String {
+        guard text.contains("  ") || text.contains("\t") || text.contains(" \t") || text.contains("\t ") else {
+            return text
+        }
+        var result = ""
+        var pendingWhitespace = false
+        for character in text {
+            if character == " " || character == "\t" {
+                pendingWhitespace = true
+            } else {
+                if pendingWhitespace {
+                    result.append(" ")
+                    pendingWhitespace = false
+                }
+                result.append(character)
+            }
+        }
+        if pendingWhitespace {
+            result.append(" ")
+        }
+        return result
     }
 
     /// Single left-to-right pass: `&amp;lt;` becomes `&lt;`, never `<`.

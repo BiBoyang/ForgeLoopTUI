@@ -73,6 +73,41 @@ final class HTMLDegraderTests: XCTestCase {
         )
     }
 
+    // MARK: - TASK-32: cell separator
+
+    func testCellTagsSeparateWithSingleSpace() {
+        XCTAssertEqual(
+            degrade("<td>DB_HOST</td><td>192.168.1.53</td><td>仅运维</td>"),
+            ["DB_HOST 192.168.1.53 仅运维"]
+        )
+        XCTAssertEqual(degrade("<th>KEY</th><th>VALUE</th>"), ["KEY VALUE"])
+        // A closing tag alone also separates.
+        XCTAssertEqual(degrade("a</td>b"), ["a b"])
+        // Case-insensitive, attributes still dropped.
+        XCTAssertEqual(degrade(#"<TD class="x">a</TD><td>b</td>"#), ["a b"])
+    }
+
+    func testCellSeparatorNeverProducesExtraSpaces() {
+        // Source spacing next to a cell tag collapses into the one separator.
+        XCTAssertEqual(degrade("<td>a</td> <td>b</td>"), ["a b"])
+        XCTAssertEqual(degrade("<td>a</td>  <td>b</td>"), ["a b"])
+        // Lone cell tags at the edges leave no stray spaces after trimming.
+        XCTAssertEqual(degrade("<td>a</td>"), ["a"])
+        XCTAssertEqual(degrade("<td>only"), ["only"])
+    }
+
+    func testInlineTdCombinesWithBlockLevelTr() {
+        // td stays inline within the row; tr still breaks rows onto lines.
+        XCTAssertEqual(
+            degrade("<tr><td>a</td><td>b</td></tr><tr><td>c</td><td>d</td></tr>"),
+            ["a b", "c d"]
+        )
+        XCTAssertEqual(
+            degrade("<table><tr><th>K</th><th>V</th></tr><tr><td>x</td><td>y</td></tr></table>"),
+            ["K V", "x y"]
+        )
+    }
+
     func testEntitiesDecodeOnDegradedLines() {
         XCTAssertEqual(degrade("<p>a &amp; b</p>"), ["a & b"])
         // Trailing &nbsp; decodes to a space, then segment trimming drops it.
@@ -126,8 +161,8 @@ final class HTMLDegraderTests: XCTestCase {
         XCTAssertEqual(rendered, [
             "🔍 查看敏感配置（点击展开）",
             "", // source blank lines between tags pass through
-            "KEYVALUE",
-            "DB_HOST192.168.1.53",
+            "KEY VALUE", // TASK-32: th cells separate with a single space
+            "DB_HOST 192.168.1.53",
             "",
             "\u{1B}[2m│\u{1B}[0m ⚠️ 请勿泄露此信息", // inner markdown still renders (quote chrome)
         ])
