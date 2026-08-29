@@ -6,9 +6,12 @@ A minimal runnable AI terminal application built with **ForgeLoopTUI**.
 
 - Interactive single-line prompt with streaming AI response
 - Block-based streaming via `blockStart` / `blockUpdate` / `blockEnd`
+- Committed-append transcript rendering: completed replies are printed once
+  via `StreamingTranscriptAppendState` + `TUI.appendFrame` and stay in the
+  terminal scrollback; the status/input area redraws in place via
+  `TUI.render(committed:live:cursorPlacement:)`
 - Cancel-in-flight with `Esc`
-- Up / Down arrow history navigation
-- Full-screen layout composition with `ScreenLayoutRenderer`
+- Prompt history navigation with `Ctrl-P` / `Ctrl-N`
 - Non-interactive (piped) fallback
 
 ## How to Run
@@ -25,8 +28,8 @@ swift run
 | `Enter` | Submit prompt |
 | `Esc` | Cancel current streaming, or clear input if idle |
 | `Ctrl-C` | Exit application |
-| `↑` | Previous history entry |
-| `↓` | Next history entry (or clear if at current) |
+| `↑` / `↓` | Move cursor across buffer lines (visual-row-aware when wrapped) |
+| `Ctrl-P` / `Ctrl-N` | Previous / next history entry |
 | `←` / `→` | Move cursor |
 | `Backspace` | Delete character before cursor |
 | `Home` / `End` | Jump to start / end of input |

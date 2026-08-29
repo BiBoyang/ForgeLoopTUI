@@ -92,7 +92,7 @@ enum AppCommand: Sendable {
 final class MinimalAIApp: @unchecked Sendable {
     private let tui: TUI
     private let transcript: TranscriptRenderer
-    private let layoutRenderer = ScreenLayoutRenderer()
+    private var appendState = StreamingTranscriptAppendState()
     private var input = MultiLineInputState()
     private var history = PromptHistory()
     private var streamingTask: Task<Void, Never>?
@@ -176,10 +176,16 @@ final class MinimalAIApp: @unchecked Sendable {
 
     // MARK: - Rendering
 
+    /// Committed-append rendering (library-native pattern):
+    /// - Transcript lines are printed exactly once via `StreamingTranscriptAppendState`
+    ///   deltas + `tui.appendFrame`, so completed replies flow into the
+    ///   terminal scrollback and stay reviewable with scroll-up.
+    /// - The live region (status lines + input box) keeps in-place redraw via
+    ///   `tui.render(committed:live:cursorPlacement:)` with an empty committed
+    ///   region, anchored right after everything already printed.
     private func render() {
         let size = getTerminalSize()
         let width = size?.columns ?? 80
-        let height = size?.rows ?? 24
 
         if let newSize = size, lastTerminalSize != newSize {
             lastTerminalSize = newSize
@@ -194,6 +200,19 @@ final class MinimalAIApp: @unchecked Sendable {
             input.setViewport(Viewport(width: viewportWidth))
         }
 
+        // 1. Print newly settled transcript lines above the live region.
+        //    The live region is erased first so appended lines land between
+        //    the already-printed history and the status/input area.
+        let delta = appendState.consume(
+            transcript: transcript.transcriptLines,
+            activeRange: transcript.activeStreamingRange
+        )
+        if !delta.isEmpty {
+            tui.render(committed: [], live: [], cursorOffset: 0)
+            tui.appendFrame(lines: delta)
+        }
+
+        // 2. Redraw the live region in place at the bottom.
         let statusLines = [
             isStreaming ? "● streaming" : "● idle",
             "pending tools: \(transcript.pendingToolCount)",
@@ -206,27 +225,11 @@ final class MinimalAIApp: @unchecked Sendable {
             idx == 0 ? prompt + line : continuation + line
         }
 
-        let layout = ScreenLayout(
-            header: [],
-            transcript: transcript.transcriptLines,
-            queue: [],
-            status: statusLines,
-            input: inputLines,
-            pinnedTranscriptRange: transcript.preferredPinnedRange
-        )
-
-        let config = ScreenLayoutConfig(
-            terminalHeight: height,
-            terminalWidth: width,
-            showHeader: false
-        )
-
-        let frame = layoutRenderer.render(
-            layout: layout,
-            config: config,
+        tui.render(
+            committed: [],
+            live: statusLines + inputLines,
             cursorPlacement: inputRendered.cursor
         )
-        tui.render(frame: frame)
     }
 
     // MARK: - Streaming
