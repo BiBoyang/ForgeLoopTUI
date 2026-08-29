@@ -145,6 +145,14 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
             return retreat
         }
 
+        if let retreat = retreatToAvoidSplittingUnclosedLatexBlock(lines: lines) {
+            return retreat
+        }
+
+        if let retreat = retreatToAvoidSplittingUnclosedHTMLTag(lines: lines) {
+            return retreat
+        }
+
         if let retreat = retreatToAvoidSplittingTrailingStreamingTable(lines: lines, remainder: remainder) {
             return retreat
         }
@@ -261,6 +269,85 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         return retreat
     }
 
+    /// 与 fence retreat 同构的 `$$` 显示公式块防御：candidate 前缀若终止在
+    /// 未闭合的 display-math 块内，回退到块起始行（开 `$$`）之前——块必须
+    /// 整体进入同一次渲染才能整体近似（或整体 raw），fence 内的 `$$` 是
+    /// fence 内容，不参与判定（fence retreat 已先行拦截）。
+    private func retreatToAvoidSplittingUnclosedLatexBlock(lines: [String]) -> Int? {
+        var inCodeFence = false
+        var inLatexBlock = false
+        var openingLineIndex: Int?
+        for (index, line) in lines.enumerated() {
+            if isCodeFenceDelimiter(line) {
+                inCodeFence.toggle()
+                continue
+            }
+            if inCodeFence { continue }
+            if inLatexBlock {
+                if line.trimmingCharacters(in: .whitespaces) == "$$" {
+                    inLatexBlock = false
+                    openingLineIndex = nil
+                }
+                continue
+            }
+            if line.trimmingCharacters(in: .whitespaces) == "$$" {
+                inLatexBlock = true
+                openingLineIndex = index
+            }
+        }
+        guard inLatexBlock, let openingLine = openingLineIndex else { return nil }
+
+        let prefixLines = lines.prefix(openingLine)
+        let prefixText = prefixLines.joined(separator: "\n")
+        var retreat = prefixText.count
+        if openingLine > 0 {
+            retreat += 1
+        }
+        return retreat
+    }
+
+    /// 与 fence retreat 同构的多行 HTML 标签防御：candidate 前缀若终止在
+    /// 一个已打开未闭合的 HTML 标签内（属性串跨行，如多行 `<img … />`），
+    /// 回退到该标签起始行之前——多行标签必须整体进入同一次渲染，属性串
+    /// 才不会泄漏。fence 内的行不参与判定（fence retreat 已先行拦截）。
+    private func retreatToAvoidSplittingUnclosedHTMLTag(lines: [String]) -> Int? {
+        var inCodeFence = false
+        var pendingTag = false
+        var openingLineIndex: Int?
+        for (index, line) in lines.enumerated() {
+            if pendingTag {
+                if line.contains(">") {
+                    pendingTag = false
+                    openingLineIndex = nil
+                    // 同一行闭合后可能又开启新的未闭合标签（`… /> <div`）。
+                    if HTMLDegrader.endsInsideUnclosedTag(line) {
+                        pendingTag = true
+                        openingLineIndex = index
+                    }
+                }
+                continue
+            }
+            if isCodeFenceDelimiter(line) {
+                inCodeFence.toggle()
+                continue
+            }
+            if inCodeFence { continue }
+            if HTMLDegrader.endsInsideUnclosedTag(line) {
+                pendingTag = true
+                openingLineIndex = index
+            }
+        }
+        guard pendingTag, let openingLine = openingLineIndex else { return nil }
+
+        let prefixLines = lines.prefix(openingLine)
+        let prefixText = prefixLines.joined(separator: "\n")
+        var retreat = prefixText.count
+        if openingLine > 0 {
+            retreat += 1
+        }
+        return retreat
+    }
+
     private func renderFully(text: String, isFinal: Bool) -> [String] {
         guard !text.isEmpty else { return [] }
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
@@ -268,40 +355,131 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         var rendered: [String] = []
         var index = 0
         var inCodeFence = false
+        // Multi-line HTML tag state: lines between an unclosed `<tag …` and
+        // its closing `>` are attribute text (dropped). `stableAdvance`
+        // retreats so a multi-line tag always renders within one pass; if it
+        // never closes inside this pass, the raw lines are flushed unchanged
+        // (no data loss).
+        var continuingUnclosedTag = false
+        var pendingRawLines: [String] = []
+        var pendingSegments: [String] = []
+        // `$$` display-math block state: lines between the delimiters are
+        // approximated (or kept raw for `\begin{…}` environments).
+        // `stableAdvance` retreats while a block is unclosed; a block that
+        // never closes inside this pass flushes its raw lines (no loss).
+        var inLatexBlock = false
+        var latexBlockLines: [String] = []
         while index < lines.count {
-            if isCodeFenceDelimiter(lines[index]) {
-                if inCodeFence {
-                    inCodeFence = false
-                    rendered.append(renderCodeFenceEnd())
+            if inLatexBlock {
+                if lines[index].trimmingCharacters(in: .whitespaces) == "$$" {
+                    inLatexBlock = false
+                    latexBlockLines.append("$$")
+                    rendered.append(contentsOf: renderedLatexBlock(latexBlockLines))
+                    latexBlockLines = []
                 } else {
-                    inCodeFence = true
-                    rendered.append(renderCodeFenceStart(lines[index]))
+                    latexBlockLines.append(lines[index])
                 }
                 index += 1
                 continue
             }
 
-            if inCodeFence {
-                rendered.append(renderCodeFenceContent(lines[index]))
-                index += 1
-                continue
+            if !continuingUnclosedTag {
+                if isCodeFenceDelimiter(lines[index]) {
+                    if inCodeFence {
+                        inCodeFence = false
+                        rendered.append(renderCodeFenceEnd())
+                    } else {
+                        inCodeFence = true
+                        rendered.append(renderCodeFenceStart(lines[index]))
+                    }
+                    index += 1
+                    continue
+                }
+
+                if inCodeFence {
+                    rendered.append(renderCodeFenceContent(lines[index]))
+                    index += 1
+                    continue
+                }
+
+                if lines[index].trimmingCharacters(in: .whitespaces) == "$$" {
+                    inLatexBlock = true
+                    latexBlockLines = ["$$"]
+                    index += 1
+                    continue
+                }
+
+                if let table = parseTable(
+                    lines: lines,
+                    start: index,
+                    isFinal: isFinal,
+                    endsWithNewline: endsWithNewline
+                ) {
+                    rendered.append(contentsOf: table.lines)
+                    index += table.consumed
+                    continue
+                }
             }
 
-            if let table = parseTable(
-                lines: lines,
-                start: index,
-                isFinal: isFinal,
-                endsWithNewline: endsWithNewline
-            ) {
-                rendered.append(contentsOf: table.lines)
-                index += table.consumed
-                continue
+            // HTML degrade happens before the inline pipeline (and strictly
+            // outside fenced code, which returns earlier in this loop), so
+            // each degraded segment gets full inline formatting and
+            // LineChrome styling as usual. Tag-free lines pass through
+            // byte-identical.
+            if continuingUnclosedTag {
+                pendingRawLines.append(lines[index])
+                let continuation = HTMLDegrader.degradeContinuation(lines[index])
+                if continuation.stillPending {
+                    index += 1
+                    continue
+                }
+                continuingUnclosedTag = false
+                rendered.append(contentsOf: pendingSegments.map { renderInlineMarkdown($0) })
+                rendered.append(contentsOf: continuation.segments.map { renderInlineMarkdown($0) })
+                pendingSegments = []
+                pendingRawLines = []
+            } else {
+                var opensUnclosedTag = false
+                let segments = HTMLDegrader.degrade(lines[index], opensUnclosedTag: &opensUnclosedTag)
+                if opensUnclosedTag {
+                    continuingUnclosedTag = true
+                    pendingRawLines = [lines[index]]
+                    pendingSegments = segments
+                } else {
+                    rendered.append(contentsOf: segments.map { renderInlineMarkdown($0) })
+                }
             }
-
-            rendered.append(renderInlineMarkdown(lines[index]))
             index += 1
         }
+        if continuingUnclosedTag {
+            // Tag never closed within this pass: keep the source lines.
+            for rawLine in pendingRawLines {
+                rendered.append(renderInlineMarkdown(rawLine, approximatingLatex: false))
+            }
+        }
+        if inLatexBlock {
+            // Display-math block never closed within this pass: keep the raw
+            // delimiter and body lines.
+            for rawLine in latexBlockLines {
+                rendered.append(renderInlineMarkdown(rawLine, approximatingLatex: false))
+            }
+        }
         return rendered
+    }
+
+    /// Renders a closed `$$` block (`["$$", body…, "$$"]`): `\begin{…}`
+    /// environments pass through raw — the identical pre-approximation
+    /// pipeline — while plain display math is approximated line by line with
+    /// the delimiters dropped.
+    private func renderedLatexBlock(_ blockLines: [String]) -> [String] {
+        if blockLines.contains(where: LaTeXApproximator.isEnvironment) {
+            return blockLines.flatMap { line in
+                HTMLDegrader.degrade(line).map {
+                    renderInlineMarkdown($0, approximatingLatex: false)
+                }
+            }
+        }
+        return blockLines.dropFirst().dropLast().map { LaTeXApproximator.approximate($0) }
     }
 
     private func parseTable(
@@ -353,10 +531,16 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         return run.count >= 3
     }
 
-    private func renderInlineMarkdown(_ line: String) -> String {
+    private func renderInlineMarkdown(_ line: String, approximatingLatex: Bool = true) -> String {
         guard !line.isEmpty else { return line }
-        let structured = renderStructuredLine(line)
-        let formatted = applyInlineFormatting(structured?.text ?? line)
+        // LaTeX approximation is a text→text pass at the very top of the
+        // pipeline: before structure classification, inline formatting, and
+        // LineChrome styling — it never touches SGR output. Raw passthroughs
+        // (fence content, \begin{…} environments, unclosed blocks) pass
+        // `approximatingLatex: false`.
+        let source = approximatingLatex ? LaTeXApproximator.approximatingSpans(in: line) : line
+        let structured = renderStructuredLine(source)
+        let formatted = applyInlineFormatting(structured?.text ?? source)
         guard let structured else { return formatted }
         switch structured.chrome {
         case .none:
