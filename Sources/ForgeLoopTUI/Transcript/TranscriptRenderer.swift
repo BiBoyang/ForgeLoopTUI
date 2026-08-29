@@ -49,6 +49,13 @@ public final class TranscriptRenderer {
     public var pendingToolCount: Int { pendingTools.count }
     public var slotOrderedToolIDs: [String] { pendingTools.map { $0.id } }
     public var activeStreamingRange: Range<Int>? { streamingRange }
+    /// Number of leading lines inside `activeStreamingRange` certified
+    /// immutable by the markdown engine (see
+    /// `MarkdownEngine.stableRenderedLineCount`). Append-only consumers pass
+    /// this to `StreamingTranscriptAppendState.consume(transcript:activeRange:stableLineCount:)`
+    /// so only lines that will never re-render are committed to scrollback;
+    /// 0 when no streaming block is open.
+    public private(set) var activeStreamingStableLineCount = 0
     public var lastCompletedAssistantRange: Range<Int>? { completedRange }
     public var preferredPinnedRange: Range<Int>? { streamingRange ?? completedRange }
 
@@ -88,6 +95,7 @@ public final class TranscriptRenderer {
             let start = lines.count
             streamingRange = start..<start
             activeBlockID = id
+            activeStreamingStableLineCount = 0
             markdownEngine.reset()
 
         case .blockUpdate(let id, let newLines):
@@ -98,17 +106,20 @@ public final class TranscriptRenderer {
                 // 无 blockStart 直接 update 的旧式用法：隐式开始并收养该 id。
                 activeBlockID = id
             }
-            replaceStreaming(with: renderMarkdown(lines: newLines, isFinal: false))
+            let rendered = renderMarkdown(lines: newLines, isFinal: false)
+            activeStreamingStableLineCount = rendered.stableCount
+            replaceStreaming(with: rendered.lines)
 
         case .blockEnd(let id, let newLines, let footer):
             // 无条件 id 匹配：nil-active（如 blockCancel 之后）到达的
             // blockEnd 属于迟到/孤儿事件，忽略——否则 replaceStreaming 的
             // nil-range 末尾追加会把内容渲染到 [cancelled] 之后。
             guard id == activeBlockID else { break }
-            replaceStreaming(with: renderMarkdown(lines: newLines, isFinal: true))
+            replaceStreaming(with: renderMarkdown(lines: newLines, isFinal: true).lines)
             completedRange = streamingRange
             streamingRange = nil
             activeBlockID = nil
+            activeStreamingStableLineCount = 0
             markdownEngine.reset()
             append("")
 
@@ -129,6 +140,7 @@ public final class TranscriptRenderer {
             streamingRange = nil
             completedRange = nil
             activeBlockID = nil
+            activeStreamingStableLineCount = 0
             markdownEngine.reset()
             append("")
 
@@ -247,8 +259,8 @@ public final class TranscriptRenderer {
         streamingRange = range.lowerBound..<(range.lowerBound + newLines.count)
     }
 
-    private func renderMarkdown(lines rawLines: [String], isFinal: Bool) -> [String] {
-        guard !rawLines.isEmpty else { return [] }
+    private func renderMarkdown(lines rawLines: [String], isFinal: Bool) -> (lines: [String], stableCount: Int) {
+        guard !rawLines.isEmpty else { return ([], 0) }
 
         var prefixLines: [String] = []
         var contentStart = 0
@@ -263,10 +275,17 @@ public final class TranscriptRenderer {
         }
 
         let contentLines = Array(rawLines.dropFirst(contentStart))
-        guard !contentLines.isEmpty else { return prefixLines }
+        guard !contentLines.isEmpty else {
+            // 整块都是 💭 前缀行（引擎未参与渲染）：除最后一行外均已被
+            // 后续的 \n 冻结；最后一行仍可能继续增长，不算稳定。
+            return (prefixLines, max(0, prefixLines.count - 1))
+        }
         let text = contentLines.joined(separator: "\n")
         let rendered = markdownEngine.render(text: text, isFinal: isFinal)
-        return prefixLines + rendered
+        // 前缀行之后还有内容，说明每个前缀行都已被 \n 冻结，全部稳定；
+        // 引擎认证其输出的稳定前缀（isFinal 时全部内容冻结，该值不再被
+        // 消费——blockEnd 后 activeStreamingRange 已清空）。
+        return (prefixLines + rendered, prefixLines.count + markdownEngine.stableRenderedLineCount)
     }
 
     private func append(_ line: String) {

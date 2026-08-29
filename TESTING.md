@@ -202,14 +202,17 @@ Command:
 
 ```bash
 swift test --filter StreamingTranscriptAppendStateTests
+# end-to-end duplication regression (renderer + engine + append state):
+swift test --filter StreamingStableCommitTests
 ```
 
 This verifies:
 
 - prompt/static-prefix append-once behavior
-- growing partial lines are not repeated
-- completed streaming lines append once
+- only engine-certified stable lines commit inside the streaming block
+- the printed watermark never rewinds (no re-emitted lines)
 - final tail flush on stream end
+- streamed tables/fences append each transcript line exactly once (no scrollback duplication)
 
 ## 3. Public API Smoke Test
 
@@ -296,6 +299,27 @@ Run it with a specific fixture:
 # Run from the repository root
 cd Examples/MarkdownShowcase
 swift run MarkdownShowcase ../Fixtures/markdownview-sample.md
+```
+
+Run the comprehensive all-formats fixture (tables, code blocks, nested quotes,
+mixed lists, task lists, LaTeX, Mermaid, footnotes, raw HTML):
+
+```bash
+# Run from the repository root
+cd Examples/MarkdownShowcase
+swift run MarkdownShowcase full
+```
+
+For an interactive streaming check of the same fixtures — no API key needed —
+use the `/demo` command in MinimalAIApp:
+
+```bash
+# Run from the repository root
+cd Examples/MinimalAIApp
+swift run
+# then type:  /demo        — list bundled fixtures
+#             /demo full   — stream the comprehensive fixture
+#             /demo table  — stream the table fixture
 ```
 
 Use this example when evaluating:

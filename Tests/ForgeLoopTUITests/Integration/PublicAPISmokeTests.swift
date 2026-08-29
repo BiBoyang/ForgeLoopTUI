@@ -34,7 +34,8 @@ final class PublicAPISmokeTests: XCTestCase {
 
         let streamingDelta = appendState.consume(
             transcript: renderer.transcriptLines,
-            activeRange: renderer.activeStreamingRange
+            activeRange: renderer.activeStreamingRange,
+            stableLineCount: renderer.activeStreamingStableLineCount
         )
         tui.appendFrame(lines: streamingDelta)
 

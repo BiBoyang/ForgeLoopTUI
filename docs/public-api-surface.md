@@ -158,7 +158,7 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 | `CoreRenderEvent` | `enum` | **Stable** | Low | Generic event vocabulary; new cases may be added safely; added `.blockCancel` and `.thinking` in v1.1.0. Block events are single-active-block: only one block open at a time; a new `blockStart` implicitly finalizes the previous block, `blockUpdate`/`blockEnd`/`blockCancel` with a mismatched `id` are ignored, and a `blockEnd` arriving with no open block (e.g. a late event after cancellation) is ignored; only `blockUpdate` implicitly adopts the id (legacy no-`blockStart` usage). A `blockCancel` with no open block still appends `[cancelled]` (lenient path, follow-up candidate) |
 | `TranscriptRenderer` | `class` | **Stable** | Low | `applyCore(_:)` + `transcriptLines` are the contract |
 | `TranscriptRenderOptions` | `struct` | **Stable** | Low | Configurable summary/notification limits; v1.1.0 |
-| `StreamingTranscriptAppendState` | `struct` | **Stable** | Low | Delta computation for append-only streaming |
+| `StreamingTranscriptAppendState` | `struct` | **Stable** | Low | Delta computation for append-only streaming; commit via `consume(transcript:activeRange:stableLineCount:)` (v1.3.0) — the two-argument form is deprecated (duplicates lines when mid-stream re-renders change earlier lines) |
 | `RenderMessage` | `enum` | **Deprecated** | N/A | Use `CoreRenderEvent` via `LegacyRenderEventAdapter` |
 | `RenderEvent` | `enum` | **Deprecated** | N/A | Use `CoreRenderEvent` instead |
 | `LegacyRenderEventAdapter` | `struct` | **Deprecated** | N/A | Bridge from old → new events |
@@ -167,7 +167,9 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 - `TranscriptRenderer.applyCore(_:)` — apply generic events.
 - `TranscriptRenderer.transcriptLines` — read-only snapshot.
 - `TranscriptRenderer.preferredPinnedRange` — streaming protection hint.
-- `StreamingTranscriptAppendState.consume(transcript:activeRange:)` — delta for append-only UIs.
+- `StreamingTranscriptAppendState.consume(transcript:activeRange:stableLineCount:)` — delta for append-only UIs; pass `TranscriptRenderer.activeStreamingStableLineCount`.
+- `TranscriptRenderer.activeStreamingStableLineCount` — engine-certified immutable prefix of the active streaming block (v1.3.0).
+- ~~`StreamingTranscriptAppendState.consume(transcript:activeRange:)`~~ — **deprecated in 1.3.0**, removed in 2.0.
 
 ---
 
@@ -221,7 +223,7 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 
 | Type | Kind | Stability | Breaking-change risk | Migration advice |
 |------|------|-----------|----------------------|------------------|
-| `MarkdownEngine` | `protocol` | **Stable** | Medium | New requirements are breaking; prefer `StreamingMarkdownEngine` |
+| `MarkdownEngine` | `protocol` | **Stable** | Medium | New requirements are breaking; prefer `StreamingMarkdownEngine`. `stableRenderedLineCount` (v1.3.0) ships with a default implementation returning 0, so existing conformers are unaffected |
 | `MarkdownRenderOptions` | `struct` | **Stable** | Low | Options value type |
 | `TableRenderPolicy` | `struct` | **Stable** | Low | Table width/truncation policy |
 | `TableOverflowBehavior` | `enum` | **Stable** | Very low | `.degradeImmediately` / `.compactThenTruncateThenDegrade` |
@@ -233,6 +235,7 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 
 **Consumer dependency points:**
 - `StreamingMarkdownEngine(options:).render(text:isFinal:)` — primary rendering.
+- `MarkdownEngine.stableRenderedLineCount` — immutable-prefix count of the last render, for append-only commit decisions (v1.3.0).
 - `MarkdownRenderOptions(tablePolicy:)` — table behavior tuning.
 - `TranscriptRenderer(markdownOptions:)` — inject into transcript pipeline.
 

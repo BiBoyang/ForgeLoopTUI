@@ -36,6 +36,83 @@ struct FauxAIProvider: MinimalAIProvider {
     }
 }
 
+// MARK: - Demo Fixtures (offline markdown test data)
+
+/// Streams a bundled markdown fixture line by line, mimicking an AI reply.
+/// Used by the `/demo <name>` command so markdown rendering can be tested
+/// offline, without an API key.
+struct FixtureAIProvider: MinimalAIProvider {
+    let lines: [String]
+    var lineDelayNanos: UInt64 = 20_000_000 // 20ms per line
+
+    func streamReply(to prompt: String) -> AsyncStream<String> {
+        AsyncStream { continuation in
+            let task = Task {
+                var buffer = ""
+                for (index, line) in lines.enumerated() {
+                    guard !Task.isCancelled else { break }
+                    if index > 0 {
+                        buffer += "\n"
+                    }
+                    buffer += line
+                    continuation.yield(buffer)
+                    try? await Task.sleep(nanoseconds: lineDelayNanos)
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in
+                task.cancel()
+            }
+        }
+    }
+}
+
+struct DemoFixture: Sendable {
+    let name: String
+    let fileName: String
+    let summary: String
+}
+
+enum DemoFixtureCatalog {
+    static let all: [DemoFixture] = [
+        DemoFixture(name: "full", fileName: "markdown-full-showcase.md", summary: "综合演示：表格/代码/引用/列表/LaTeX/Mermaid/HTML"),
+        DemoFixture(name: "table", fileName: "markdown-table-showcase.md", summary: "表格渲染与对齐"),
+        DemoFixture(name: "edge", fileName: "markdown-table-edge-cases.md", summary: "表格边界与降级"),
+        DemoFixture(name: "long", fileName: "markdown-long-mixed-showcase.md", summary: "长文混合结构"),
+        DemoFixture(name: "narrow", fileName: "markdown-narrow-terminal-showcase.md", summary: "窄终端换行压力"),
+        DemoFixture(name: "sample", fileName: "markdownview-sample.md", summary: "markdownview 经典样本"),
+        DemoFixture(name: "transcript", fileName: "long-transcript.md", summary: "长 transcript 滚动"),
+    ]
+
+    static func lookup(_ name: String) -> DemoFixture? {
+        all.first { $0.name == name }
+    }
+
+    static func isDemoCommand(_ text: String) -> Bool {
+        text == "/demo" || text.hasPrefix("/demo ")
+    }
+
+    static func argument(of command: String) -> String {
+        command.dropFirst("/demo".count).trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Resolve Examples/Fixtures relative to this source file so `/demo`
+    /// works no matter which directory the app is launched from.
+    static func url(for fixture: DemoFixture) -> URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // Sources/MinimalAIApp/
+            .deletingLastPathComponent() // Sources/
+            .deletingLastPathComponent() // Examples/MinimalAIApp/
+            .deletingLastPathComponent() // Examples/
+            .appendingPathComponent("Fixtures/\(fixture.fileName)")
+    }
+
+    static func load(_ fixture: DemoFixture) throws -> FixtureAIProvider {
+        let text = try String(contentsOf: url(for: fixture), encoding: .utf8)
+        return FixtureAIProvider(lines: splitPromptLines(text))
+    }
+}
+
 // MARK: - Thread-safe boxes
 
 final class ExitFlag: @unchecked Sendable {
@@ -205,7 +282,8 @@ final class MinimalAIApp: @unchecked Sendable {
         //    the already-printed history and the status/input area.
         let delta = appendState.consume(
             transcript: transcript.transcriptLines,
-            activeRange: transcript.activeStreamingRange
+            activeRange: transcript.activeStreamingRange,
+            stableLineCount: transcript.activeStreamingStableLineCount
         )
         if !delta.isEmpty {
             tui.render(committed: [], live: [], cursorOffset: 0)
@@ -234,7 +312,8 @@ final class MinimalAIApp: @unchecked Sendable {
 
     // MARK: - Streaming
 
-    private func startAssistantStreaming(prompt: String) {
+    private func startAssistantStreaming(prompt: String, provider: MinimalAIProvider? = nil) {
+        let provider = provider ?? self.provider
         let blockID = "assistant-\(UUID().uuidString)"
         currentAssistantBlockID = blockID
         isStreaming = true
@@ -242,10 +321,10 @@ final class MinimalAIApp: @unchecked Sendable {
         transcript.applyCore(.blockStart(id: blockID))
         render()
 
-        streamingTask = Task { [weak self] in
+        streamingTask = Task { [weak self, provider] in
             guard let self else { return }
             var buffer = ""
-            for await token in self.provider.streamReply(to: prompt) {
+            for await token in provider.streamReply(to: prompt) {
                 guard !Task.isCancelled else { break }
                 buffer = token
                 await MainActor.run {
@@ -289,7 +368,46 @@ final class MinimalAIApp: @unchecked Sendable {
         if let task = streamingTask {
             task.cancel()
         }
+        if DemoFixtureCatalog.isDemoCommand(submitted) {
+            handleDemoCommand(submitted)
+            return
+        }
         startAssistantStreaming(prompt: submitted)
+    }
+
+    // MARK: - Demo Command
+
+    /// Handles `/demo` locally: lists the catalog, or streams the requested
+    /// markdown fixture through the normal assistant streaming path.
+    private func handleDemoCommand(_ command: String) {
+        let argument = DemoFixtureCatalog.argument(of: command)
+
+        guard !argument.isEmpty else {
+            transcript.applyCore(.insert(lines: demoCatalogLines()))
+            render()
+            return
+        }
+
+        guard let fixture = DemoFixtureCatalog.lookup(argument) else {
+            transcript.applyCore(.insert(lines: ["unknown demo: \(argument)"] + demoCatalogLines()))
+            render()
+            return
+        }
+
+        do {
+            let provider = try DemoFixtureCatalog.load(fixture)
+            startAssistantStreaming(prompt: command, provider: provider)
+        } catch {
+            transcript.applyCore(.insert(
+                lines: ["failed to load demo fixture \(fixture.fileName): \(error.localizedDescription)"]
+            ))
+            render()
+        }
+    }
+
+    private func demoCatalogLines() -> [String] {
+        ["available demos (usage: /demo <name>):"]
+            + DemoFixtureCatalog.all.map { "  \($0.name) — \($0.summary) (\($0.fileName))" }
     }
 
     // MARK: - Input Handling
@@ -431,6 +549,11 @@ final class MinimalAIApp: @unchecked Sendable {
             return
         }
 
+        if DemoFixtureCatalog.isDemoCommand(prompt) {
+            runDemoNonInteractive(prompt)
+            return
+        }
+
         let semaphore = DispatchSemaphore(value: 0)
         let resultBox = ResultBox()
 
@@ -443,6 +566,25 @@ final class MinimalAIApp: @unchecked Sendable {
 
         semaphore.wait()
         print(resultBox.value)
+    }
+
+    /// Non-interactive `/demo`: prints the raw fixture markdown (or the
+    /// catalog) to stdout, without streaming delays.
+    private func runDemoNonInteractive(_ command: String) {
+        let argument = DemoFixtureCatalog.argument(of: command)
+        guard !argument.isEmpty, let fixture = DemoFixtureCatalog.lookup(argument) else {
+            if !argument.isEmpty {
+                fputs("unknown demo: \(argument)\n", stderr)
+            }
+            print(demoCatalogLines().joined(separator: "\n"))
+            return
+        }
+        do {
+            let text = try String(contentsOf: DemoFixtureCatalog.url(for: fixture), encoding: .utf8)
+            print(text)
+        } catch {
+            fputs("failed to load demo fixture \(fixture.fileName): \(error.localizedDescription)\n", stderr)
+        }
     }
 }
 

@@ -3,17 +3,48 @@ import Foundation
 public protocol MarkdownEngine: AnyObject {
     func reset()
     func render(text: String, isFinal: Bool) -> [String]
+
+    /// Number of leading lines of the most recent `render` output that are
+    /// guaranteed immutable: as long as later `render` calls only append text
+    /// to the buffer, those lines reappear unchanged (same content, same
+    /// positions) at the start of every future output. Append-only consumers
+    /// (e.g. `StreamingTranscriptAppendState`) may commit exactly this prefix
+    /// to scrollback; anything past it may still be re-rendered.
+    ///
+    /// The count must never rewind while the buffer only grows. After a
+    /// `reset()` it restarts from zero for the next buffer.
+    var stableRenderedLineCount: Int { get }
+}
+
+extension MarkdownEngine {
+    /// Default for engines that do not track a stable prefix: nothing is
+    /// certified immutable, so append-only consumers defer to the final
+    /// (non-streaming) flush. Rendering itself is unaffected.
+    public var stableRenderedLineCount: Int { 0 }
 }
 
 public final class PlainTextMarkdownEngine: MarkdownEngine {
+    private var lastStableLineCount = 0
+
     public init() {}
 
-    public func reset() {}
+    public func reset() {
+        lastStableLineCount = 0
+    }
 
     public func render(text: String, isFinal: Bool) -> [String] {
-        guard !text.isEmpty else { return [] }
+        guard !text.isEmpty else {
+            lastStableLineCount = 0
+            return []
+        }
+        // Every `\n`-terminated line is immutable; only the trailing partial
+        // line (or the empty next-line prefix after a trailing newline) may
+        // still change.
+        lastStableLineCount = text.reduce(into: 0) { $0 += $1 == "\n" ? 1 : 0 }
         return text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
     }
+
+    public var stableRenderedLineCount: Int { lastStableLineCount }
 }
 
 public final class StreamingMarkdownEngine: MarkdownEngine {
@@ -32,6 +63,13 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
     public init(options: MarkdownRenderOptions = .init()) {
         self.options = options
     }
+
+    /// Lines rendered from `stableSource` are final by construction: the
+    /// stable prefix only advances at source line boundaries, and constructs
+    /// that would re-render earlier lines as they grow (streaming tables,
+    /// unclosed code fences) are held back in the unstable region by the
+    /// retreat logic in `stableAdvance`.
+    public var stableRenderedLineCount: Int { stableRendered.count }
 
     public func reset() {
         stableSource = ""
