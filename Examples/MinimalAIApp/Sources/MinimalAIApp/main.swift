@@ -253,13 +253,21 @@ final class MinimalAIApp: @unchecked Sendable {
 
     // MARK: - Rendering
 
-    /// Committed-append rendering (library-native pattern):
+    /// Committed-append rendering with live unstable-region preview:
     /// - Transcript lines are printed exactly once via `StreamingTranscriptAppendState`
     ///   deltas + `tui.appendFrame`, so completed replies flow into the
     ///   terminal scrollback and stay reviewable with scroll-up.
-    /// - The live region (status lines + input box) keeps in-place redraw via
-    ///   `tui.render(committed:live:cursorPlacement:)` with an empty committed
-    ///   region, anchored right after everything already printed.
+    /// - While a reply streams, the unstable tail of the active block (lines
+    ///   past the engine-certified stable prefix) previews in the committed
+    ///   region of `tui.render(committed:live:cursorPlacement:)`, so markdown
+    ///   appears line by line instead of popping in once settled.
+    /// - Settling uses the oracle-pinned three-step sequence — erase the
+    ///   in-place region with an empty render, `appendFrame` the newly stable
+    ///   lines, then re-render the remaining preview. Never `appendFrame`
+    ///   directly after a full frame (see CommittedPreviewAnchorTests).
+    /// - Every frame stays anchored (cursorPlacement, or cursorOffset: 0 for
+    ///   the erase frame), so frame-to-frame diffs never cross the
+    ///   anchored/unanchored boundary.
     private func render() {
         let size = getTerminalSize()
         let width = size?.columns ?? 80
@@ -277,9 +285,26 @@ final class MinimalAIApp: @unchecked Sendable {
             input.setViewport(Viewport(width: viewportWidth))
         }
 
-        // 1. Print newly settled transcript lines above the live region.
-        //    The live region is erased first so appended lines land between
-        //    the already-printed history and the status/input area.
+        // Unstable tail of the active streaming block: the rendered lines
+        // past the engine-certified stable prefix. They preview in the
+        // committed region and leave it (via the settle sequence below) as
+        // the stable prefix grows. Same `stableLineCount` value feeds both
+        // the preview slice and `consume`, so the two never disagree.
+        let preview: [String]
+        if let range = transcript.activeStreamingRange {
+            let lines = transcript.transcriptLines
+            let unstableStart = min(
+                range.lowerBound + transcript.activeStreamingStableLineCount,
+                range.upperBound
+            )
+            preview = Array(lines[unstableStart..<range.upperBound])
+        } else {
+            preview = []
+        }
+
+        // 1. Settle newly stable transcript lines into the scrollback:
+        //    erase the in-place region first so appended lines land between
+        //    the already-printed history and the preview/status/input area.
         let delta = appendState.consume(
             transcript: transcript.transcriptLines,
             activeRange: transcript.activeStreamingRange,
@@ -290,7 +315,7 @@ final class MinimalAIApp: @unchecked Sendable {
             tui.appendFrame(lines: delta)
         }
 
-        // 2. Redraw the live region in place at the bottom.
+        // 2. Redraw the preview + live region in place at the bottom.
         let statusLines = [
             isStreaming ? "● streaming" : "● idle",
             "pending tools: \(transcript.pendingToolCount)",
@@ -304,7 +329,7 @@ final class MinimalAIApp: @unchecked Sendable {
         }
 
         tui.render(
-            committed: [],
+            committed: preview,
             live: statusLines + inputLines,
             cursorPlacement: inputRendered.cursor
         )

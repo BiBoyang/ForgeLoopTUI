@@ -7,6 +7,7 @@ Format and section names follow `docs/semver-and-api-stability.md` (§7).
 ## [Unreleased]
 
 ### Changed
+- MinimalAIApp now previews the unstable tail of the in-flight streaming block in the committed region (`TUI.render(committed:live:cursorPlacement:)`), so markdown appears line by line as it streams instead of popping in once settled. Newly stable lines settle into the scrollback through the oracle-pinned sequence — erase the in-place region with an empty anchored render, `appendFrame`, then re-render the remaining preview — and every frame stays anchored end to end (pinned by `CommittedPreviewAnchorTests`). When preview + live exceed the terminal height the library's existing full-redraw fallback applies; long-content soak remains TASK-29 scope.
 - `TUI` init no longer assumes `isTTY == true` when the parameter is omitted: unspecified `isTTY` now probes the real environment (`terminal.isTTY` when a terminal is supplied, otherwise the stdout `isatty` probe shared with `StdoutTerminal`). Piped output therefore degrades to plain (non-ANSI) rendering automatically; callers passing an explicit `isTTY` are unaffected. Library tests that relied on the implicit default now state their TTY intent explicitly.
 
 ### Deprecated

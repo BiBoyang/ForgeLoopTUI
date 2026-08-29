@@ -130,7 +130,66 @@ def main():
           wait_for(master, rb"You said: after resize.*powered by ForgeLoopTUI\.", start=r4))
     pump(master, 0.4)
 
-    # 6. Ctrl-C exits — driven via `script(1)` so the child gets a real
+    # 6. /demo table: the unstable region previews live during streaming
+    #    (TASK-28). The fixture streams line by line at 20ms/line, so an
+    #    early table row must be visible long before the tail line exists.
+    d0 = len(BUF)
+    os.write(master, b"/demo table\r")
+    check("demo table: streaming starts", wait_for(master, STREAMING, 5, start=d0))
+    check("demo table: early row previews mid-stream",
+          wait_for(master, rb"Alice", 10, start=d0))
+    # BUF only grows inside pump/wait_for, so this snapshot is exactly what
+    # had arrived when "Alice" first matched — the tail must not exist yet.
+    snapshot = bytes(BUF)
+    check("demo table: preview is intermediate (tail not yet streamed)",
+          b"should not accidentally become a table" not in snapshot[d0:])
+    check("demo table: stream completes",
+          wait_for(master, rb"should not accidentally become a table", 20, start=d0))
+    check("demo table: returns to idle", wait_for(master, IDLE, 5, start=d0))
+    pump(master, 0.5)
+    # Stronger discrimination: the fixture's last line can never be stable
+    # mid-stream (it may always grow), so its FIRST occurrence must come from
+    # a live preview frame — i.e. a streaming status line follows within the
+    # same frame, not from the post-blockEnd settle (which is followed by
+    # idle). This is what old settle-only rendering fails. Evaluated only
+    # after completion so the frame tail is guaranteed to have arrived.
+    tail_marker = b"should not accidentally become a table"
+    i_tail = BUF.find(tail_marker, d0)
+    tail_context = bytes(BUF[i_tail:i_tail + 600]) if i_tail != -1 else b""
+    # STREAMING is a regex pattern (\xHH decodes in re, not in raw bytes) —
+    # use re.search, not a plain substring test.
+    check("demo table: tail line previews before settling (unstable preview)",
+          i_tail != -1 and re.search(STREAMING, tail_context) is not None)
+
+    # Final state: each settled line is appended exactly once, in fixture
+    # order. The last occurrence of each unique marker is its settle-append
+    # (settled lines leave the preview, so nothing rewrites them afterwards),
+    # and settles happen in source order — which is the static render order.
+    markers = [
+        "Alice", "Carol", "Pencil", "Ruler",
+        "测试", "示例",
+        "no  | parse",           # fenced code must NOT render as a table
+        "Nested quote depth",
+        "Normal Text After Tables",
+        "should not accidentally become a table",
+    ]
+    marker_bytes = [m.encode() for m in markers]
+    last = [BUF.rfind(m) for m in marker_bytes]
+    check("demo table: settled line order matches static render",
+          all(i != -1 for i in last) and all(a < b for a, b in zip(last, last[1:])))
+
+    # Forcing further renders after completion must not re-emit any settled
+    # demo line (no duplicates in the final state).
+    d1 = len(BUF)
+    os.write(master, b"x")
+    check("post-demo input echoes", wait_for(master, rb"\xe2\x9d\xaf x", 5, start=d1))
+    os.write(master, b"\x7f")  # backspace: render again with an empty input
+    pump(master, 0.4)
+    tail = bytes(BUF[d1:])
+    check("demo table: settled lines never re-emit after completion",
+          all(m not in tail for m in marker_bytes))
+
+    # 7. Ctrl-C exits — driven via `script(1)` so the child gets a real
     #    controlling terminal (bare openpty without ctty makes the app's
     #    shutdown path hang; that is a harness artifact, not app behavior).
     ctrlc = subprocess.run(
@@ -141,7 +200,10 @@ def main():
     pump(master, 0.3)
 
     # byte-stream assertions (scrollback contract)
-    check("no ESC[2J full-screen clear", b"\x1b[2J" not in BUF)
+    # Scoped to pre-demo bytes: while a /demo preview exceeds the terminal
+    # height, the library's documented full-redraw fallback (ESC[2J) applies
+    # — long-content soak is TASK-29's scope, not a regression here.
+    check("no ESC[2J full-screen clear", b"\x1b[2J" not in BUF[:d0])
     i1 = BUF.find(b"You said: first question")
     i2 = BUF.find(b"You said: second question")
     i3 = BUF.find(b"You said: after resize")

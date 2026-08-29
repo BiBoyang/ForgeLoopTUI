@@ -6,10 +6,15 @@ A minimal runnable AI terminal application built with **ForgeLoopTUI**.
 
 - Interactive single-line prompt with streaming AI response
 - Block-based streaming via `blockStart` / `blockUpdate` / `blockEnd`
-- Committed-append transcript rendering: completed replies are printed once
-  via `StreamingTranscriptAppendState` + `TUI.appendFrame` and stay in the
-  terminal scrollback; the status/input area redraws in place via
-  `TUI.render(committed:live:cursorPlacement:)`
+- Committed-append transcript rendering with live preview: while a reply
+  streams, the unstable tail of the active block (the rendered lines past
+  the engine-certified stable prefix) previews in the committed region via
+  `TUI.render(committed:live:cursorPlacement:)`, so markdown appears line by
+  line as it streams; as lines turn stable they settle into the scrollback
+  exactly once via `StreamingTranscriptAppendState` + `TUI.appendFrame`,
+  using the oracle-pinned sequence erase → append → re-render with anchored
+  frames throughout. The status/input area redraws in place below the
+  preview.
 - Cancel-in-flight with `Esc`
 - Prompt history navigation with `Ctrl-P` / `Ctrl-N`
 - Non-interactive (piped) fallback
