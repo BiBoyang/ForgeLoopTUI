@@ -2,6 +2,15 @@ import XCTest
 @testable import ForgeLoopTUI
 
 final class MarkdownEngineTests: XCTestCase {
+    /// TASK-24: the default theme now styles block chrome (headings, tables,
+    /// quote bars, fence borders) with SGR. This suite pins the engine's
+    /// plain byte stream and structural behavior, so its engines run under
+    /// the `.none` theme; default-theme styling bytes are covered by
+    /// `BlockElementStylingTests`.
+    private func plainEngine() -> StreamingMarkdownEngine {
+        StreamingMarkdownEngine(options: MarkdownRenderOptions(theme: .none))
+    }
+
     func testPlainTextEngineSplitsByNewline() {
         let engine = PlainTextMarkdownEngine()
         let lines = engine.render(text: "alpha\nbeta\n", isFinal: true)
@@ -9,7 +18,7 @@ final class MarkdownEngineTests: XCTestCase {
     }
 
     func testStreamingEngineRendersCompleteTable() {
-        let engine = StreamingMarkdownEngine()
+        let engine = plainEngine()
         let text = """
         | name | score |
         | --- | ---: |
@@ -38,7 +47,7 @@ final class MarkdownEngineTests: XCTestCase {
     }
 
     func testStreamingEngineConvergesToTableOnFinalFlush() {
-        let engine = StreamingMarkdownEngine()
+        let engine = plainEngine()
         let partial = """
         | name | score |
         | --- | ---: |
@@ -58,7 +67,7 @@ final class MarkdownEngineTests: XCTestCase {
     }
 
     func testStreamingEngineRendersCompleteRowsAsTableWithoutTrailingNewline() {
-        let engine = StreamingMarkdownEngine()
+        let engine = plainEngine()
         let text = """
         | name | score |
         | --- | ---: |
@@ -75,7 +84,7 @@ final class MarkdownEngineTests: XCTestCase {
     }
 
     func testStreamingEngineKeepsTableRenderingWhileTrailingRowGrows() {
-        let engine = StreamingMarkdownEngine()
+        let engine = plainEngine()
         let initial = """
         | name | score |
         | --- | --- |
@@ -133,7 +142,7 @@ final class MarkdownEngineTests: XCTestCase {
     }
 
     func testStreamingEngineRendersCodeFenceWithoutParsingNestedTable() {
-        let engine = StreamingMarkdownEngine()
+        let engine = plainEngine()
         let text = """
         ```markdown
         | a | b |
@@ -154,7 +163,7 @@ final class MarkdownEngineTests: XCTestCase {
     }
 
     func testFourBacktickCodeFenceIsRecognized() {
-        let engine = StreamingMarkdownEngine()
+        let engine = plainEngine()
         let text = """
         ````swift
         let x = 1
@@ -169,7 +178,7 @@ final class MarkdownEngineTests: XCTestCase {
     }
 
     func testFourTildeCodeFenceIsRecognized() {
-        let engine = StreamingMarkdownEngine()
+        let engine = plainEngine()
         let text = """
         ~~~~
         tilde fence
@@ -184,7 +193,7 @@ final class MarkdownEngineTests: XCTestCase {
     }
 
     func testStreamingEngineFormatsHeadingsQuotesListsAndCodeBlocks() {
-        let engine = StreamingMarkdownEngine()
+        let engine = plainEngine()
         let text = """
         # Title
 
@@ -214,7 +223,7 @@ final class MarkdownEngineTests: XCTestCase {
     }
 
     func testStreamingEngineFormatsNestedBlockquotesAndMixedListHierarchy() {
-        let engine = StreamingMarkdownEngine()
+        let engine = plainEngine()
         let text = """
         > quote
         >> deeper quote
@@ -249,7 +258,7 @@ final class MarkdownEngineTests: XCTestCase {
     }
 
     func testStreamingEngineCompactsAndTruncatesVeryWideTableByDefault() {
-        let engine = StreamingMarkdownEngine()
+        let engine = plainEngine()
         let wideCell = String(repeating: "x", count: 260)
         let text = """
         | col | detail |
@@ -343,7 +352,7 @@ final class MarkdownEngineTests: XCTestCase {
     }
 
     func testStreamingEngineRendersCJKTableUsingVisibleWidths() {
-        let engine = StreamingMarkdownEngine()
+        let engine = plainEngine()
         let text = """
         | 名称 | 值 |
         | --- | --- |
@@ -388,7 +397,8 @@ final class MarkdownEngineTests: XCTestCase {
     func testAutoReadableKeepsBoxDrawingForModerateWidthTable() {
         let engine = StreamingMarkdownEngine(
             options: .init(
-                tablePolicy: .init(wideTableStrategy: .autoReadable)
+                tablePolicy: .init(wideTableStrategy: .autoReadable),
+                theme: .none
             )
         )
         let text = """
@@ -412,7 +422,8 @@ final class MarkdownEngineTests: XCTestCase {
                     minColumnWidth: 6,
                     maxColumnWidth: 8,
                     wideTableStrategy: .alwaysBox
-                )
+                ),
+                theme: .none
             )
         )
         let text = """
@@ -431,7 +442,8 @@ final class MarkdownEngineTests: XCTestCase {
         let engine = StreamingMarkdownEngine(
             options: .init(
                 tablePolicy: .init(wideTableStrategy: .autoReadable),
-                tableStreamingBehavior: .monotonic
+                tableStreamingBehavior: .monotonic,
+                theme: .none
             )
         )
         let partial = """
@@ -517,7 +529,7 @@ final class MarkdownEngineTests: XCTestCase {
     }
 
     func testInlineFormattingDoesNotBreakHeadings() {
-        let engine = StreamingMarkdownEngine()
+        let engine = plainEngine()
         let result = engine.render(text: "# Hello **world**", isFinal: true)
         XCTAssertEqual(result.count, 1)
         // Heading prefix preserved, bold applied to "world"
@@ -573,7 +585,7 @@ final class MarkdownEngineTests: XCTestCase {
     }
 
     func testTaskListInBlockquote() {
-        let engine = StreamingMarkdownEngine()
+        let engine = plainEngine()
         let result = engine.render(text: "> - [ ] task", isFinal: true)
         XCTAssertEqual(result, ["│ ☐ task"])
     }
@@ -596,7 +608,7 @@ final class MarkdownEngineTests: XCTestCase {
     /// 必须与一次性 renderFully 全文的输出一致。修复前：闭合 ``` 在 live 片段里
     /// 被误判为新 fence 的开始，出现第二个 "┌─ code"。
     func testStreamingCodeFenceRetreatMatchesOneShotFinalRender() {
-        let engine = StreamingMarkdownEngine()
+        let engine = plainEngine()
         let frame1 = "```swift\nlet x = 1\n"
         let frame2 = frame1 + "let y = 2\n"
         let frame3 = frame2 + "```\nafter\n"
@@ -604,17 +616,17 @@ final class MarkdownEngineTests: XCTestCase {
         // 流式中间帧应与全新引擎对同一文本的一次性（非 final）渲染一致。
         XCTAssertEqual(
             engine.render(text: frame1, isFinal: false),
-            StreamingMarkdownEngine().render(text: frame1, isFinal: false)
+            plainEngine().render(text: frame1, isFinal: false)
         )
         XCTAssertEqual(
             engine.render(text: frame2, isFinal: false),
-            StreamingMarkdownEngine().render(text: frame2, isFinal: false)
+            plainEngine().render(text: frame2, isFinal: false)
         )
 
         let finalLines = engine.render(text: frame3, isFinal: true)
         XCTAssertEqual(
             finalLines,
-            StreamingMarkdownEngine().render(text: frame3, isFinal: true)
+            plainEngine().render(text: frame3, isFinal: true)
         )
         XCTAssertEqual(finalLines.filter { $0.hasPrefix("┌─ code") }.count, 1)
         XCTAssertEqual(finalLines.filter { $0 == "└─ end code" }.count, 1)
@@ -624,7 +636,7 @@ final class MarkdownEngineTests: XCTestCase {
     /// fence 从输入最开始就未闭合：回退结果为 0，稳定前缀不推进，
     /// 直到 fence 闭合后一次性收敛到与一次性渲染相同的输出。
     func testStreamingCodeFenceUnclosedFromStartRetreatsToZero() {
-        let engine = StreamingMarkdownEngine()
+        let engine = plainEngine()
         let frame1 = "```\nalpha\nbeta\n"
         XCTAssertEqual(
             engine.render(text: frame1, isFinal: false),
@@ -635,7 +647,7 @@ final class MarkdownEngineTests: XCTestCase {
         let finalLines = engine.render(text: frame2, isFinal: true)
         XCTAssertEqual(
             finalLines,
-            StreamingMarkdownEngine().render(text: frame2, isFinal: true)
+            plainEngine().render(text: frame2, isFinal: true)
         )
         XCTAssertEqual(finalLines.filter { $0.hasPrefix("┌─ code") }.count, 1)
         XCTAssertTrue(finalLines.contains("│ gamma"))
@@ -644,18 +656,18 @@ final class MarkdownEngineTests: XCTestCase {
     /// fence 之前的内容可以正常稳定化，回退点应落在 fence 起始行之前，
     /// 而不是整个输入的起点。
     func testStreamingCodeFenceRetreatPreservesContentBeforeFence() {
-        let engine = StreamingMarkdownEngine()
+        let engine = plainEngine()
         let frame1 = "intro\n```\ncode1\n"
         XCTAssertEqual(
             engine.render(text: frame1, isFinal: false),
-            StreamingMarkdownEngine().render(text: frame1, isFinal: false)
+            plainEngine().render(text: frame1, isFinal: false)
         )
 
         let frame2 = frame1 + "code2\n```\noutro\n"
         let finalLines = engine.render(text: frame2, isFinal: true)
         XCTAssertEqual(
             finalLines,
-            StreamingMarkdownEngine().render(text: frame2, isFinal: true)
+            plainEngine().render(text: frame2, isFinal: true)
         )
         XCTAssertEqual(finalLines.first, "intro")
         XCTAssertEqual(finalLines.filter { $0.hasPrefix("┌─ code") }.count, 1)
@@ -664,7 +676,7 @@ final class MarkdownEngineTests: XCTestCase {
 
     /// 已闭合的 fence 不影响判定：只有最后一个仍未闭合的 fence 触发回退。
     func testStreamingCodeFenceRetreatIgnoresClosedFences() {
-        let engine = StreamingMarkdownEngine()
+        let engine = plainEngine()
         let frame1 = "```\na\n```\nmiddle\n```\nb\n"
         _ = engine.render(text: frame1, isFinal: false)
 
@@ -672,7 +684,7 @@ final class MarkdownEngineTests: XCTestCase {
         let finalLines = engine.render(text: frame2, isFinal: true)
         XCTAssertEqual(
             finalLines,
-            StreamingMarkdownEngine().render(text: frame2, isFinal: true)
+            plainEngine().render(text: frame2, isFinal: true)
         )
         XCTAssertEqual(finalLines.filter { $0.hasPrefix("┌─ code") }.count, 2)
         XCTAssertEqual(finalLines.filter { $0 == "└─ end code" }.count, 2)
@@ -682,14 +694,14 @@ final class MarkdownEngineTests: XCTestCase {
     /// 表格状内容出现在未闭合代码块内时，按 renderFully 的既有语义它是 fence
     /// 内容而非表格——fence retreat 必须先于表格 retreat 生效。
     func testTableLikeLinesInsideUnclosedCodeFenceRetreatToFenceStart() {
-        let engine = StreamingMarkdownEngine()
+        let engine = plainEngine()
         let frame1 = "```markdown\n| a | b |\n| --- | --- |\n"
         _ = engine.render(text: frame1, isFinal: false)
 
         let frame2 = frame1 + "| 1 | 2 |\n"
         XCTAssertEqual(
             engine.render(text: frame2, isFinal: false),
-            StreamingMarkdownEngine().render(text: frame2, isFinal: false)
+            plainEngine().render(text: frame2, isFinal: false)
         )
 
         let frame3 = frame2 + "```\n"
@@ -707,7 +719,7 @@ final class MarkdownEngineTests: XCTestCase {
     /// isFinal = true 路径不受影响：stableAdvance 直接推进全文，
     /// 未闭合 fence 按既有行为渲染为未闭合的代码块。
     func testFinalRenderOfUnclosedCodeFenceIsUnchanged() {
-        let engine = StreamingMarkdownEngine()
+        let engine = plainEngine()
         let lines = engine.render(text: "```swift\nlet x = 1\n", isFinal: true)
         XCTAssertEqual(lines, ["┌─ code swift", "│ let x = 1", "│"])
     }
@@ -728,7 +740,7 @@ final class MarkdownEngineTests: XCTestCase {
 @MainActor
 final class TranscriptRendererMarkdownTests: XCTestCase {
     func testTranscriptRendererRendersTableInFinalOutput() {
-        let renderer = TranscriptRenderer()
+        let renderer = TranscriptRenderer(markdownOptions: .init(theme: .none))
 
         renderer.apply(.messageStart(message: .assistant(text: "", thinking: nil, errorMessage: nil)))
         renderer.apply(.messageUpdate(message: .assistant(

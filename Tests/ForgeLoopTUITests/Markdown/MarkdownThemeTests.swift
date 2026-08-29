@@ -156,14 +156,13 @@ final class MarkdownThemeTests: XCTestCase {
         XCTAssertEqual(theme.headingStyle(forLevel: Int.max), theme.heading6)
     }
 
-    // MARK: - Engine pin (TASK-23 scaffold)
+    // MARK: - Engine pin
 
-    /// TASK-23 only introduces the theme scaffold: the engine does not consume
-    /// `options.theme` yet, so output must be byte-identical under any theme,
-    /// for both the streaming and final paths. This is the pin that guarantees
-    /// `.none`-themed rendering keeps producing the current byte stream until
-    /// block styling (TASK-24) wires the theme in.
-    func testEngineOutputIsThemeIndependentUntilWiring() {
+    /// `.none` pins the pre-theme plain byte stream: block chrome carries no
+    /// escape sequences. (Inline formatting emits its own SGR independent of
+    /// the theme, so the sample avoids inline constructs.) Default-theme
+    /// styling bytes are covered by `BlockElementStylingTests`.
+    func testNoneThemeEngineOutputContainsNoEscapeSequences() {
         let sample = """
         # Release Notes
 
@@ -183,35 +182,14 @@ final class MarkdownThemeTests: XCTestCase {
         - [x] stable prefix
         - [ ] colors
         """
-        let plainEngine = StreamingMarkdownEngine(options: MarkdownRenderOptions(theme: .none))
-        let themedEngine = StreamingMarkdownEngine(options: MarkdownRenderOptions(theme: .default))
-
-        XCTAssertEqual(
-            plainEngine.render(text: sample, isFinal: true),
-            themedEngine.render(text: sample, isFinal: true)
-        )
-
-        plainEngine.reset()
-        themedEngine.reset()
-        var accumulated = ""
-        for chunk in sample.chunks(ofSize: 40) {
-            accumulated += chunk
-            XCTAssertEqual(
-                plainEngine.render(text: accumulated, isFinal: false),
-                themedEngine.render(text: accumulated, isFinal: false)
+        let engine = StreamingMarkdownEngine(options: MarkdownRenderOptions(theme: .none))
+        let lines = engine.render(text: sample, isFinal: true)
+        XCTAssertFalse(lines.isEmpty)
+        for line in lines {
+            XCTAssertFalse(
+                line.contains("\u{1B}"),
+                "unexpected escape sequence in .none-themed output: \(line.debugDescription)"
             )
-        }
-    }
-}
-
-private extension String {
-    /// Splits the string into consecutive chunks of at most `size` characters,
-    /// on `Character` boundaries so multi-byte scalars are never split.
-    func chunks(ofSize size: Int) -> [String] {
-        guard !isEmpty else { return [] }
-        return stride(from: 0, to: count, by: size).map { start in
-            let end = min(start + size, count)
-            return String(self[index(startIndex, offsetBy: start) ..< index(startIndex, offsetBy: end)])
         }
     }
 }

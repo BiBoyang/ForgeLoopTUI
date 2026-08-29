@@ -64,6 +64,8 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         self.options = options
     }
 
+    private var theme: MarkdownTheme { options.theme }
+
     /// Lines rendered from `stableSource` are final by construction: the
     /// stable prefix only advances at source line boundaries, and constructs
     /// that would re-render earlier lines as they grow (streaming tables,
@@ -353,8 +355,22 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
 
     private func renderInlineMarkdown(_ line: String) -> String {
         guard !line.isEmpty else { return line }
-        let blockLevel = renderStructuredLine(line) ?? line
-        return applyInlineFormatting(blockLevel)
+        let structured = renderStructuredLine(line)
+        let formatted = applyInlineFormatting(structured?.text ?? line)
+        guard let structured else { return formatted }
+        switch structured.chrome {
+        case .none:
+            return formatted
+        case .heading(let level):
+            return applyBlockStyle(theme.headingStyle(forLevel: level), to: formatted)
+        case .blockquote(let indentLength, let depth, let contentEmpty):
+            return styledBlockquoteBar(
+                in: formatted,
+                indentLength: indentLength,
+                depth: depth,
+                contentEmpty: contentEmpty
+            )
+        }
     }
 
     /// Apply inline formatting: code spans (`` ` ``), bold (`**`), italic (`*`),
@@ -464,7 +480,18 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         return (literal, openCount)
     }
 
-    private func renderStructuredLine(_ line: String) -> String? {
+    /// Block-level chrome classification for a rendered line: which theme
+    /// slot (if any) styles it, plus the bookkeeping needed to splice styles
+    /// into the already-formatted text. Styling must run *after*
+    /// `applyInlineFormatting` — SGR sequences contain `[`, which the inline
+    /// link parser would otherwise swallow.
+    private enum LineChrome {
+        case none
+        case heading(level: Int)
+        case blockquote(indentLength: Int, depth: Int, contentEmpty: Bool)
+    }
+
+    private func renderStructuredLine(_ line: String) -> (text: String, chrome: LineChrome)? {
         let leadingWhitespace = String(line.prefix(while: isIndentationCharacter))
         let trimmed = line.dropFirst(leadingWhitespace.count)
         guard !trimmed.isEmpty else { return nil }
@@ -477,14 +504,67 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
                 indentationLevel: 0,
                 rawIndentPrefix: ""
             ) ?? String(quoteContent)
-            return rendered.isEmpty ? quotePrefix.trimmingCharacters(in: .whitespaces) : quotePrefix + rendered
+            let chrome = LineChrome.blockquote(
+                indentLength: leadingWhitespace.count,
+                depth: quoteDepth,
+                contentEmpty: rendered.isEmpty
+            )
+            let text = rendered.isEmpty
+                ? quotePrefix.trimmingCharacters(in: .whitespaces)
+                : quotePrefix + rendered
+            return (text, chrome)
         }
 
-        return renderDecoratedContent(
+        guard let decorated = renderDecoratedContent(
             String(trimmed),
             indentationLevel: indentationUnits(in: leadingWhitespace),
             rawIndentPrefix: leadingWhitespace
-        )
+        ) else { return nil }
+
+        let chrome = parseHeadingLevel(String(trimmed)).map { LineChrome.heading(level: $0) } ?? .none
+        return (decorated, chrome)
+    }
+
+    /// Restyles the `│` bars of an already inline-formatted blockquote line.
+    /// The plain bars occupy exactly `indentLength + 2 * depth` leading
+    /// characters (whitespace and `│` are never rewritten by inline
+    /// formatting), so the styled bars are spliced in front of the content.
+    /// Empty-content quotes emit only the bars (indent and trailing space
+    /// trimmed), matching the unstyled byte stream shape.
+    private func styledBlockquoteBar(
+        in formatted: String,
+        indentLength: Int,
+        depth: Int,
+        contentEmpty: Bool
+    ) -> String {
+        let styledBar = theme.blockquoteLine.applied(to: "│") + " "
+        if contentEmpty {
+            var bars = ""
+            for _ in 0..<depth { bars += styledBar }
+            return String(bars.dropLast())
+        }
+        var prefix = String(formatted.prefix(indentLength))
+        for _ in 0..<depth { prefix += styledBar }
+        return prefix + formatted.dropFirst(indentLength + 2 * depth)
+    }
+
+    /// Applies `style` around the whole already-formatted `text`, re-opening
+    /// the style after every inline `ESC[0m` reset inside it so bold/italic
+    /// spans within a heading don't wipe the heading style for the rest of
+    /// the line. No-op for unstyled styles or empty text, keeping the
+    /// `.none`-theme byte stream identical.
+    private func applyBlockStyle(_ style: MarkdownStyle, to text: String) -> String {
+        let opening = style.sgrOpeningSequence
+        guard !opening.isEmpty, !text.isEmpty else { return text }
+        let reset = "\u{1B}[0m"
+        var content = text.replacingOccurrences(of: reset, with: reset + opening)
+        if content.hasSuffix(reset + opening) {
+            content.removeLast(opening.count)
+        }
+        if content.hasSuffix(reset) {
+            return opening + content
+        }
+        return opening + content + reset
     }
 
     private func renderDecoratedContent(
@@ -512,7 +592,10 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         return nil
     }
 
-    private func renderHeading(_ line: String) -> String? {
+    /// Heading level (1...6) when `line` is an ATX heading (`#` … `######`
+    /// followed by a space and non-empty title); nil otherwise. Shared by
+    /// `renderHeading` (text assembly) and line-chrome classification.
+    private func parseHeadingLevel(_ line: String) -> Int? {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         guard trimmed.hasPrefix("#") else { return nil }
 
@@ -524,7 +607,15 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         guard trimmed[markerEnd] == " " else { return nil }
 
         let title = trimmed[trimmed.index(after: markerEnd)...].trimmingCharacters(in: .whitespaces)
-        guard !title.isEmpty else { return nil }
+        return title.isEmpty ? nil : markerCount
+    }
+
+    private func renderHeading(_ line: String) -> String? {
+        guard let markerCount = parseHeadingLevel(line) else { return nil }
+
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        let markerEnd = trimmed.index(trimmed.startIndex, offsetBy: markerCount)
+        let title = trimmed[trimmed.index(after: markerEnd)...].trimmingCharacters(in: .whitespaces)
 
         let prefix: String
         switch markerCount {
@@ -610,11 +701,13 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
     private func renderCodeFenceStart(_ line: String) -> String {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         let language = trimmed.drop(while: { $0 == "`" || $0 == "~" }).trimmingCharacters(in: .whitespaces)
-        return language.isEmpty ? "┌─ code" : "┌─ code \(language)"
+        let border = theme.fenceBorder.applied(to: "┌─ code")
+        guard !language.isEmpty else { return border }
+        return border + " " + theme.fenceLanguageLabel.applied(to: language)
     }
 
     private func renderCodeFenceEnd() -> String {
-        "└─ end code"
+        theme.fenceBorder.applied(to: "└─ end code")
     }
 
     private func renderCodeFenceContent(_ line: String) -> String {
@@ -810,13 +903,20 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         }
 
         var output: [String] = []
-        output.append(borderLine(left: "┌", middle: "┬", right: "┐", widths: resolvedWidths))
-        output.append(tableRow(cells: header, aligns: alignment, widths: resolvedWidths, policy: options.tablePolicy))
-        output.append(borderLine(left: "├", middle: "┼", right: "┤", widths: resolvedWidths))
+        let border = theme.tableBorder
+        output.append(border.applied(to: borderLine(left: "┌", middle: "┬", right: "┐", widths: resolvedWidths)))
+        output.append(tableRow(
+            cells: header,
+            aligns: alignment,
+            widths: resolvedWidths,
+            policy: options.tablePolicy,
+            cellStyle: theme.tableHeader
+        ))
+        output.append(border.applied(to: borderLine(left: "├", middle: "┼", right: "┤", widths: resolvedWidths)))
         for row in normalizedRows {
             output.append(tableRow(cells: row, aligns: alignment, widths: resolvedWidths, policy: options.tablePolicy))
         }
-        output.append(borderLine(left: "└", middle: "┴", right: "┘", widths: resolvedWidths))
+        output.append(border.applied(to: borderLine(left: "└", middle: "┴", right: "┘", widths: resolvedWidths)))
         return output
     }
 
@@ -878,12 +978,22 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         return left + segments.joined(separator: middle) + right
     }
 
-    private func tableRow(cells: [String], aligns: [CellAlign], widths: [Int], policy: TableRenderPolicy) -> String {
+    private func tableRow(
+        cells: [String],
+        aligns: [CellAlign],
+        widths: [Int],
+        policy: TableRenderPolicy,
+        cellStyle: MarkdownStyle = .none
+    ) -> String {
         var parts: [String] = []
         for index in 0..<cells.count {
-            parts.append(padded(cells[index], width: widths[index], align: aligns[index], policy: policy))
+            // Style wraps the finished (padded + truncated) cell as a whole —
+            // never inside padded()/truncate(), where a cut would split an
+            // SGR sequence and leak the style into subsequent output.
+            parts.append(cellStyle.applied(to: padded(cells[index], width: widths[index], align: aligns[index], policy: policy)))
         }
-        return "│ " + parts.joined(separator: " │ ") + " │"
+        let bar = theme.tableBorder.applied(to: "│")
+        return bar + " " + parts.joined(separator: " " + bar + " ") + " " + bar
     }
 
     private func padded(_ value: String, width: Int, align: CellAlign, policy: TableRenderPolicy) -> String {
@@ -931,5 +1041,15 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         }
 
         return result
+    }
+}
+
+private extension MarkdownStyle {
+    /// The raw `ESC[…m` opening sequence for this style ("" when unstyled).
+    /// Engine-side helper for re-opening a block style after inline resets.
+    var sgrOpeningSequence: String {
+        guard !attributes.isEmpty else { return "" }
+        let parameters = attributes.flatMap(\.parameters).map(String.init).joined(separator: ";")
+        return "\u{1B}[\(parameters)m"
     }
 }
