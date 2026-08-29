@@ -15,6 +15,11 @@ func splitFixtureLines(_ text: String) -> [String] {
 
 func builtinFixtureSpec(named name: String) -> FixtureSpec? {
     switch name.lowercased() {
+    case "full", "full-showcase":
+        return FixtureSpec(
+            label: "full-showcase",
+            url: URL(fileURLWithPath: "../Fixtures/markdown-full-showcase.md").standardizedFileURL
+        )
     case "showcase", "table-showcase":
         return FixtureSpec(
             label: "table-showcase",

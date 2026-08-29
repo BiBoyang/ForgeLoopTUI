@@ -13,6 +13,7 @@ A minimal runnable AI terminal application built with **ForgeLoopTUI**.
 - Cancel-in-flight with `Esc`
 - Prompt history navigation with `Ctrl-P` / `Ctrl-N`
 - Non-interactive (piped) fallback
+- `/demo` command: streams bundled markdown fixtures offline for rendering tests
 
 ## How to Run
 
@@ -40,6 +41,26 @@ Pipe stdin directly:
 
 ```bash
 echo "hello" | swift run
+```
+
+## Demo Fixtures (Offline Markdown Testing)
+
+Type `/demo` in the interactive prompt to list the bundled markdown fixtures,
+and `/demo <name>` to stream one locally through the normal assistant reply
+path — no API key required:
+
+```text
+/demo full   # comprehensive: tables/code/quotes/lists/LaTeX/Mermaid/HTML
+/demo table  # table rendering and alignment
+/demo edge   # table edge cases and degradation
+```
+
+Fixtures live in `Examples/Fixtures/` and are shared with `MarkdownShowcase`
+and `MinimalStreamingDemo`. In non-interactive mode, `/demo <name>` prints
+the raw fixture markdown instead:
+
+```bash
+echo "/demo full" | swift run
 ```
 
 ## Replacing the AI Provider
