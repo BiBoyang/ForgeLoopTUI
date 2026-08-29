@@ -13,6 +13,7 @@
 | 分期顺序 | 一期样式+HTML/LaTeX（TASK-23~26）→ 二期流式预览（TASK-27~29）→ 三期语法高亮（TASK-30~31），逐期独立 commit |
 | LaTeX 边界 | 只做常见宏近似（希腊字母/运算符/上下标/`\sqrt`/简单 `\frac`）；`\begin{...}` 环境保持 raw，不上大件 |
 | 语法高亮 | 先只做 **Python + JavaScript** 两种语言验证效果，不引第三方依赖（自研小型 tokenizer） |
+| HTML 单元格分隔（2026-08-29 TASK-25 评审追加） | `th`/`td` 降级为空格分隔（不换行）——"挤比松难读"，用户拍板要 |
 
 ## 0.1 硬约束（贯穿全部任务）
 
@@ -90,6 +91,16 @@
   - 文档：`CHANGELOG.md`
 - 范围细节：希腊字母表、常见运算符（`\int \infty \pm \geq \leq \neq \cdot \times`）、`\sqrt{...}`、`\frac{a}{b}→(a)/(b)`、单字符上下标（`x_1→x₁`、`x^2→x²`，多字符上标覆盖 `e^{i\pi}` 类常见形）。
 - DoD：宏映射单测（含未知宏透传、环境块 raw）；fixture §5 目测；CHANGELOG Added。
+
+### TASK-32 `html-degrade-cell-separator`（一期追加，微任务）
+- 目标：HTML 表格单元格降级加空格分隔——`th`/`td` 剥标签时在单元格间留空格，不再无分隔连接（`DB_HOST192.168.1.53仅运维` → `DB_HOST 192.168.1.53 仅运维`）。
+- 来源：TASK-25 评审披露的已知风险，用户拍板"要的"（§0 拍板表）。
+- 涉及文件：
+  - 修改 `Sources/ForgeLoopTUI/Markdown/HTMLDegrader.swift`（单元格标签走"空格分隔"而非"整段剥除"；多空格折叠/首尾 trim 走现有 postProcess）
+  - 修改 `Tests/ForgeLoopTUITests/Markdown/HTMLDegraderTests.swift`（追加用例：td/th 分隔、连续单元格不多余空格、行内 td 与块级 tr 组合）
+  - 文档：`CHANGELOG.md`（TASK-25 条目补一句即可）
+- DoD：新增用例全绿 + 既有 19 用例不回归；全量 `swift test` 绿。
+- 风险：无；纯数据/分支小改。**前置**：TASK-25/26 先提交，本任务在其 diff 上落地。
 
 ### TASK-27 `preview-anchor-oracle`（二期前置闸门）
 - 目标：**先证后建**——VirtualTerminal 预言机测试证明"`render(committed: 非空, live: …)` 与帧间 `appendFrame` 共存时帧锚定正确、无错位无重复"。
