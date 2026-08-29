@@ -3,13 +3,19 @@ import Foundation
 public struct MarkdownRenderOptions: Sendable, Equatable {
     public var tablePolicy: TableRenderPolicy
     public var tableStreamingBehavior: TableStreamingBehavior
+    /// Visual theme for markdown block-level chrome. Defaults to
+    /// `MarkdownTheme.default`; pass `MarkdownTheme.none` to pin the plain
+    /// (pre-theme) byte stream.
+    public var theme: MarkdownTheme
 
     public init(
         tablePolicy: TableRenderPolicy = .default,
-        tableStreamingBehavior: TableStreamingBehavior = .monotonic
+        tableStreamingBehavior: TableStreamingBehavior = .monotonic,
+        theme: MarkdownTheme = .default
     ) {
         self.tablePolicy = tablePolicy
         self.tableStreamingBehavior = tableStreamingBehavior
+        self.theme = theme
     }
 }
 

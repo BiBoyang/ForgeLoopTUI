@@ -224,7 +224,12 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 | Type | Kind | Stability | Breaking-change risk | Migration advice |
 |------|------|-----------|----------------------|------------------|
 | `MarkdownEngine` | `protocol` | **Stable** | Medium | New requirements are breaking; prefer `StreamingMarkdownEngine`. `stableRenderedLineCount` (v1.3.0) ships with a default implementation returning 0, so existing conformers are unaffected |
-| `MarkdownRenderOptions` | `struct` | **Stable** | Low | Options value type |
+| `MarkdownRenderOptions` | `struct` | **Stable** | Low | Options value type; `theme` added in v1.3.0 (default `MarkdownTheme.default`) — block-chrome styling, `.none` pins the pre-theme plain byte stream |
+| `MarkdownTheme` | `struct` | **Provisional** | Medium | Visual theme for markdown block chrome (heading levels 1–6, table header/borders, blockquote bar, fence borders/language label, task-list markers) plus `code` syntax-highlight styles; pure value type injected via `MarkdownRenderOptions.theme` — no singletons, no environment probing. Slot set may grow in MINOR releases; engine consumption of the slots lands with block styling |
+| `MarkdownTheme.CodeHighlightStyles` | `struct` | **Provisional** | Low | Keyword/string/comment/number styles for syntax-highlighted fence content; categories may be added in MINOR releases |
+| `MarkdownStyle` | `struct` | **Provisional** | Low | Ordered SGR attribute list; `applied(to:)` wraps text as `ESC[…m` + text + `ESC[0m`; empty styles/empty text pass through unchanged (no escape bytes) |
+| `MarkdownSGRAttribute` | `enum` | **Provisional** | Low | SGR attributes (`.bold`/`.faint`/`.italic`/`.underline`/`.inverse`/`.strikethrough`/`.foreground`/`.background`); `parameters` exposes the raw SGR codes |
+| `MarkdownSGRColor` | `enum` | **Provisional** | Low | Terminal color as SGR parameters: `.standard(0–7)` / `.bright(0–7)` / `.indexed(0–255)` / `.rgb(red:green:blue:)`; range validation is the caller's responsibility |
 | `TableRenderPolicy` | `struct` | **Stable** | Low | Table width/truncation policy |
 | `TableOverflowBehavior` | `enum` | **Stable** | Very low | `.degradeImmediately` / `.compactThenTruncateThenDegrade` |
 | `WideTableStrategy` | `enum` | **Stable** | Very low | `.alwaysBox` / `.autoReadable` |
@@ -237,6 +242,7 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 - `StreamingMarkdownEngine(options:).render(text:isFinal:)` — primary rendering.
 - `MarkdownEngine.stableRenderedLineCount` — immutable-prefix count of the last render, for append-only commit decisions (v1.3.0).
 - `MarkdownRenderOptions(tablePolicy:)` — table behavior tuning.
+- `MarkdownRenderOptions(theme:)` — visual theme selection (`MarkdownTheme.default` styled chrome / `MarkdownTheme.none` plain text).
 - `TranscriptRenderer(markdownOptions:)` — inject into transcript pipeline.
 
 ---
@@ -264,7 +270,7 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 | Stability level | Count | Recommendation |
 |-----------------|-------|----------------|
 | **Stable** | ~69 | Safe to depend on; breaking changes require MAJOR bump |
-| **Provisional** | ~12 | Safe to adopt; monitor release notes for MINOR evolutions |
+| **Provisional** | ~17 | Safe to adopt; monitor release notes for MINOR evolutions |
 | **Internal-detail** | ~13 | Avoid direct dependency; may change without SemVer protection |
 | **Deprecated** | 3 | Migrate to `CoreRenderEvent` / `TranscriptRenderer.applyCore(_:)` |
 
