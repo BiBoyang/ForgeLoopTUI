@@ -187,13 +187,13 @@ final class ScrollbackTerminal: Terminal, @unchecked Sendable {
     }
 }
 
-/// TASK-21 三路二分探针（调查用）：
-/// (a) 静态一次性 blockEnd —— 已由 ScratchProbe 覆盖：正确。
+/// TASK-21 回归测试（三路二分，源自调查期探针，已转正）：
+/// (a) 静态一次性 blockEnd —— 已由 StreamingGarbleEngineRegressionTests 覆盖：正确。
 /// (b) 流式 + liveBudget 0 vs (c) 流式 + liveBudget 4/.physicalRows/.marker：
 ///     逐帧走 MinimalAIApp 同构管线（TranscriptRenderer → ScreenLayoutRenderer
 ///     pinned 裁剪 → TUI.render(committed:live:cursorPlacement:)），
 ///     逐帧校验屏幕一致性，并比对 (b)/(c) 的 TUI 输出字节流。
-final class ScratchTUIBisectTests: XCTestCase {
+final class StreamingGarbleTUIRegressionTests: XCTestCase {
     @MainActor
     private func runReplay(liveBudget: Int) throws -> (
         committed: [[String]],

@@ -28,8 +28,9 @@ struct CommittedLiveRenderTests {
 
         // 第二帧应回退到首行（startLineIndex 回退一行保证光标位置正确）
         #expect(secondOutput?.contains("\u{1B}[2A") ?? false)
-        // 清除旧 tail
-        #expect(secondOutput?.contains("\u{1B}[2K") ?? false)
+        // 清除旧 tail：擦除机制自 TASK-21 修复起为单发 ESC[0J
+        // （原为逐行 ESC[2K + \r\n 循环，整屏帧上尾 \n 会触发终端滚动）
+        #expect(secondOutput?.contains("\u{1B}[0J") ?? false)
         // 输出新内容
         #expect(secondOutput?.contains("new live") ?? false)
         // startLineIndex 回退一行保证光标位置正确，commit 会被连带重绘

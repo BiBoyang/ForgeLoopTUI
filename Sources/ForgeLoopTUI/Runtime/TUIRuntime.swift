@@ -595,6 +595,7 @@ public final class TUI: @unchecked Sendable {
             }
 
             let prefixRows = totalPhysicalRows(for: prev.prefix(startLineIndex))
+            let prevTailRows = totalPhysicalRows(for: prev.dropFirst(startLineIndex))
             let newTail = Array(lines.dropFirst(startLineIndex))
             let rewindRows = wasAnchored
                 ? max(0, (prevRows - 1) - prefixRows)
@@ -603,11 +604,14 @@ public final class TUI: @unchecked Sendable {
             // 与 renderInlineCommittedLive 同型：rewind 到 diff 起始行行首，
             // `ESC[0J` 一次擦到屏尾后原地重写 newTail（见该处注释：逐行
             // `ESC[2K` + `\n` 的 erase 循环在整屏帧上会触发终端滚动）。
+            // 仅旧帧在起始行之下有内容时才擦除，保持首帧无清屏的契约。
             output += "\r"
             if rewindRows > 0 {
                 output += "\u{1B}[\(rewindRows)A"
             }
-            output += "\u{1B}[0J"
+            if prevTailRows > 0 {
+                output += "\u{1B}[0J"
+            }
             output += newTail.joined(separator: ttyNewline)
             if trailingNewline {
                 output += ttyNewline
@@ -761,7 +765,17 @@ public final class TUI: @unchecked Sendable {
             prefixRows = lastCommittedPhysicalRows + totalPhysicalRows(for: live.prefix(startLineIndex - committed.count))
         }
 
-        // 5. 计算 newTail 和 rewindRows
+        // 5. 旧帧在 diff 起始行之下的物理行数（决定是否需要擦除）。
+        //    首帧（prev 为空）为 0 → 不发射任何擦除序列，保持「首帧输出
+        //    全帧且不清屏」的历史字节契约。
+        let prevTailRows: Int
+        if startLineIndex <= prevCommitted.count {
+            prevTailRows = totalPhysicalRows(for: prevCommitted.dropFirst(startLineIndex)) + prevLiveRows
+        } else {
+            prevTailRows = totalPhysicalRows(for: prevLive.dropFirst(startLineIndex - prevCommitted.count))
+        }
+
+        // 6. 计算 newTail 和 rewindRows
         let allNew = committed + live
         let newTail = Array(allNew.dropFirst(startLineIndex))
         let prevTotalRows = prevCommittedRows + prevLiveRows
@@ -769,19 +783,22 @@ public final class TUI: @unchecked Sendable {
             ? max(0, (prevTotalRows - 1) - prefixRows)
             : max(0, prevTotalRows - prefixRows)
 
-        // 6. 生成输出：rewind 到 diff 起始行行首，一次 `ESC[0J` 擦到屏尾，
+        // 7. 生成输出：rewind 到 diff 起始行行首，一次 `ESC[0J` 擦到屏尾，
         //    原地重写 newTail。
         //
         //    不再用「逐行 `ESC[2K` + `\r\n` 擦除 + `ESC[nA` 回移」的循环：
         //    帧占满整屏时循环最后一发的 `\n` 落到底行之外，触发终端滚动，
         //    把 startLineIndex 之前未重写的 prefix 行推入 scrollback（丢行），
         //    且滚动后光标 clamp 在底行，回移计数少算一次滚动，导致重绘
-        //    整体上移一行。`ESC[0J` 只擦不发 `\n`，无滚动语义。
+        //    整体上移一行。`ESC[0J` 只擦不发 `\n`，无滚动语义。仅当旧帧
+        //    在起始行之下确有内容时才发射（首帧无旧内容可擦）。
         var output = prevTotalRows > 0 ? "\r" : ""
         if rewindRows > 0 {
             output += "\u{1B}[\(rewindRows)A"
         }
-        output += "\u{1B}[0J"
+        if prevTailRows > 0 {
+            output += "\u{1B}[0J"
+        }
 
         output += newTail.joined(separator: ttyNewline)
         if trailingNewline {
