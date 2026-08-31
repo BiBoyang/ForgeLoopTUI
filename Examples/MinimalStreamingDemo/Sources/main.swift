@@ -35,7 +35,8 @@ func runDemo() throws {
         let delta = appendState.consume(
             transcript: renderer.transcriptLines,
             activeRange: renderer.activeStreamingRange,
-            stableLineCount: renderer.activeStreamingStableLineCount
+            stableLineCount: renderer.activeStreamingStableLineCount,
+            unsettledFrom: renderer.firstUnsettledLineIndex
         )
         if !delta.isEmpty {
             tui.appendFrame(lines: delta)

@@ -130,8 +130,10 @@ final class TranscriptRendererToolResultTests: XCTestCase {
         renderer.apply(.toolExecutionEnd(toolCallId: "tc-9", toolName: "bash", isError: false, summary: "line1\nline2"))
 
         let lines = renderer.transcriptLines
+        // 只有第一行带 done: 前缀；后续行缩进到内容列，聚合在一次调用下
         XCTAssertTrue(lines.contains("⎿ done: line1"))
-        XCTAssertTrue(lines.contains("⎿ done: line2"))
+        XCTAssertTrue(lines.contains("        line2"))
+        XCTAssertFalse(lines.contains("⎿ done: line2"))
     }
 
     // MARK: - Configurable options
@@ -147,8 +149,9 @@ final class TranscriptRendererToolResultTests: XCTestCase {
         XCTAssertTrue(lines.contains("⎿ done: line1"))
         XCTAssertFalse(lines.contains("⎿ done: line2"))
         XCTAssertFalse(lines.contains("⎿ done: line3"))
-        // Ellipsis indicator present
-        XCTAssertTrue(lines.contains("⎿ done: ..."))
+        // Ellipsis indicator present (content-aligned continuation line)
+        XCTAssertTrue(lines.contains("        ..."))
+        XCTAssertFalse(lines.contains("⎿ done: ..."))
     }
 
     func testCustomSummaryCharsThreshold() {

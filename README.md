@@ -138,6 +138,7 @@ You can also use:
 - `transcriptLines` as the stable read-only snapshot of rendered transcript lines
 - `StreamingTranscriptAppendState` to compute transcript deltas for append-only streaming UIs
 - `TranscriptRenderer.activeStreamingRange` to know which transcript range is still mutable
+- `TranscriptRenderer.firstUnsettledLineIndex` to keep pending operation status lines out of the committed scrollback (pass as `unsettledFrom` to `StreamingTranscriptAppendState.consume`)
 - `TranscriptRenderer.slotOrderedToolIDs` to inspect pending tools in start order
 
 Low-level logical-line and terminal-metric helpers are kept as implementation details; the stable consumer-facing API is centered on `TUI`, `TranscriptRenderer`, `CoreRenderEvent`, `Style`, and `StreamingTranscriptAppendState` — see `docs/public-api-surface.md` for the full stability catalog.
@@ -268,12 +269,12 @@ For design rationale and change notes, see `docs/markdown-table-rendering.md`.
 
 ## Event Model
 
-You adapt your own agent events to `CoreRenderEvent` (via `TranscriptRenderer.applyCore(_:)`), keeping this library independent from your business layer. Nine events cover the full transcript vocabulary:
+You adapt your own agent events to `CoreRenderEvent` (via `TranscriptRenderer.applyCore(_:)`), keeping this library independent from your business layer. Ten events cover the full transcript vocabulary:
 
 - `insert(lines:)` — static lines that never change (e.g. a user prompt)
 - `blockStart(id:)` / `blockUpdate(id:lines:)` / `blockEnd(id:lines:footer:)` / `blockCancel(id:)` — a streaming content block (e.g. an assistant reply). Block events are single-active-block: a `blockStart` while another block is open implicitly finalizes it, and updates/ends/cancels with a mismatched `id` are ignored
 - `thinking(content:isFinal:)` — model reasoning, rendered distinctly from regular assistant text
-- `operationStart(id:header:status:)` / `operationEnd(id:isError:result:)` — tool execution placeholders (`running...` → `done/failed`) with stable slot ordering
+- `operationStart(id:header:status:)` / `operationEnd(id:isError:result:)` / `operationCancel(id:)` — tool execution placeholders (`running...` → `done/failed/cancelled`) with stable slot ordering; the pending status line is rewritten in place on settle, and a multi-line result aggregates under a single `⎿ done:`/`⎿ failed:` prefix (continuation lines are content-aligned)
 - `notification(text:)` — auto-collapsing notices
 
 `RenderMessage` / `RenderEvent` / `TranscriptRenderer.apply(_:)` are deprecated; new code should use `applyCore(_:)`.
