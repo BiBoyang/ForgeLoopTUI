@@ -17,6 +17,13 @@ public struct StreamingTranscriptAppendState: Sendable {
     ///   stable boundary may still change mid-stream (tables gaining rows,
     ///   degrade↔render flips, fence chrome) and must stay in the live
     ///   region. Pass `TranscriptRenderer.activeStreamingStableLineCount`.
+    /// - Lines at or after `unsettledFrom` are held back even when they lie
+    ///   outside the streaming block: pending operation slots replace their
+    ///   status line in place on `operationEnd`/`operationCancel` (and may
+    ///   expand to multiple lines), so committing them would leak the
+    ///   transient `⎿ running...` into scrollback. Pass
+    ///   `TranscriptRenderer.firstUnsettledLineIndex`; nil (default) keeps
+    ///   the pre-1.4.0 behavior for callers without operation events.
     /// - When the block ends (`activeRange == nil`) everything remaining is
     ///   flushed; the final render is frozen, so nothing can change anymore.
     ///
@@ -29,22 +36,28 @@ public struct StreamingTranscriptAppendState: Sendable {
     public mutating func consume(
         transcript: [String],
         activeRange: Range<Int>?,
-        stableLineCount: Int
+        stableLineCount: Int,
+        unsettledFrom: Int? = nil
     ) -> [String] {
         if printedTranscriptCount > transcript.count {
             printedTranscriptCount = transcript.count
         }
 
+        // Commit watermark may not advance past this point: lines at or
+        // after it may still be replaced in place or shifted by slot
+        // expansion. Clamped to bounds so stale values can't crash or rewind.
+        let commitLimit = min(max(0, unsettledFrom ?? transcript.count), transcript.count)
+
         var newLines: [String] = []
         if let activeRange {
-            let blockStart = min(activeRange.lowerBound, transcript.count)
+            let blockStart = min(activeRange.lowerBound, transcript.count, commitLimit)
             if blockStart > printedTranscriptCount {
                 newLines.append(contentsOf: transcript[printedTranscriptCount..<blockStart])
                 printedTranscriptCount = blockStart
             }
 
             let blockEnd = min(activeRange.upperBound, transcript.count)
-            let stableUpperBound = min(blockStart + max(0, stableLineCount), blockEnd)
+            let stableUpperBound = min(blockStart + max(0, stableLineCount), blockEnd, commitLimit)
             if stableUpperBound > printedTranscriptCount {
                 newLines.append(contentsOf: transcript[printedTranscriptCount..<stableUpperBound])
                 printedTranscriptCount = stableUpperBound
@@ -52,9 +65,9 @@ public struct StreamingTranscriptAppendState: Sendable {
             return newLines
         }
 
-        guard transcript.count > printedTranscriptCount else { return [] }
-        let flushed = Array(transcript[printedTranscriptCount..<transcript.count])
-        printedTranscriptCount = transcript.count
+        guard commitLimit > printedTranscriptCount else { return [] }
+        let flushed = Array(transcript[printedTranscriptCount..<commitLimit])
+        printedTranscriptCount = commitLimit
         return flushed
     }
 

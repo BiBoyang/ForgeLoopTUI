@@ -48,6 +48,17 @@ public final class TranscriptRenderer {
 
     public var pendingToolCount: Int { pendingTools.count }
     public var slotOrderedToolIDs: [String] { pendingTools.map { $0.id } }
+    /// First transcript line that may still be replaced in place or shifted
+    /// by slot expansion: the status line of the earliest pending operation
+    /// (`operationEnd`/`operationCancel` rewrite it on settle). nil when no
+    /// operation is pending. Append-only consumers pass this as
+    /// `unsettledFrom` to
+    /// `StreamingTranscriptAppendState.consume(transcript:activeRange:stableLineCount:unsettledFrom:)`
+    /// so the transient status line (and everything below it) stays out of
+    /// the committed scrollback until the operation settles.
+    public var firstUnsettledLineIndex: Int? {
+        pendingTools.map(\.lineIndex).min()
+    }
     public var activeStreamingRange: Range<Int>? { streamingRange }
     /// Number of leading lines inside `activeStreamingRange` certified
     /// immutable by the markdown engine (see
@@ -176,13 +187,19 @@ public final class TranscriptRenderer {
             let lineIndex = pendingTools[slotIndex].lineIndex
             pendingTools.remove(at: slotIndex)
             let prefix = isError ? "⎿ failed" : "⎿ done"
-            let previewLines = formatToolResult(result)
-            let resultLines = previewLines.isEmpty ? [prefix] : previewLines.map { "\(prefix): \($0)" }
+            let resultLines = formatSettledOperationLines(prefix: prefix, result: result)
             lines.replace(range: lineIndex..<(lineIndex + 1), with: resultLines)
             let delta = resultLines.count - 1
             if delta != 0 {
                 shiftIndices(after: lineIndex, by: delta)
             }
+
+        case .operationCancel(let id):
+            // 同 operationEnd 的槽位替换语义：status 行被原地替换为取消标记。
+            guard let slotIndex = pendingTools.firstIndex(where: { $0.id == id }) else { break }
+            let lineIndex = pendingTools[slotIndex].lineIndex
+            pendingTools.remove(at: slotIndex)
+            lines.replace(range: lineIndex..<(lineIndex + 1), with: ["⎿ cancelled"])
 
         case .notification(let text):
             appendNotification("▸ \(text)")
@@ -192,6 +209,18 @@ public final class TranscriptRenderer {
     @available(*, deprecated, message: "Use applyCore(_:) with CoreRenderEvent instead")
     public func apply(_ event: RenderEvent) {
         applyCore(LegacyRenderEventAdapter.adapt(event))
+    }
+
+    /// Settled operation slot lines: the first result line carries the
+    /// `⎿ done:`/`⎿ failed:` prefix; continuation lines are indented to the
+    /// content column so a multi-line result reads as one call's output,
+    /// not one completion per line.
+    private func formatSettledOperationLines(prefix: String, result: String?) -> [String] {
+        let previewLines = formatToolResult(result)
+        guard let first = previewLines.first else { return [prefix] }
+        guard previewLines.count > 1 else { return ["\(prefix): \(first)"] }
+        let indent = String(repeating: " ", count: visibleWidth("\(prefix): "))
+        return ["\(prefix): \(first)"] + previewLines.dropFirst().map { indent + $0 }
     }
 
     private func formatToolResult(_ text: String?) -> [String] {

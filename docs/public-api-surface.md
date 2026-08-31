@@ -155,10 +155,10 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 
 | Type | Kind | Stability | Breaking-change risk | Migration advice |
 |------|------|-----------|----------------------|------------------|
-| `CoreRenderEvent` | `enum` | **Stable** | Low | Generic event vocabulary; new cases may be added safely; added `.blockCancel` and `.thinking` in v1.1.0. Block events are single-active-block: only one block open at a time; a new `blockStart` implicitly finalizes the previous block, `blockUpdate`/`blockEnd`/`blockCancel` with a mismatched `id` are ignored, and a `blockEnd` arriving with no open block (e.g. a late event after cancellation) is ignored; only `blockUpdate` implicitly adopts the id (legacy no-`blockStart` usage). A `blockCancel` with no open block still appends `[cancelled]` (lenient path, follow-up candidate) |
+| `CoreRenderEvent` | `enum` | **Stable** | Low | Generic event vocabulary; new cases may be added safely; added `.blockCancel` and `.thinking` in v1.1.0, `.operationCancel` later (same slot-replacement semantics as `.operationEnd`: the pending status line is rewritten in place on settle). Block events are single-active-block: only one block open at a time; a new `blockStart` implicitly finalizes the previous block, `blockUpdate`/`blockEnd`/`blockCancel` with a mismatched `id` are ignored, and a `blockEnd` arriving with no open block (e.g. a late event after cancellation) is ignored; only `blockUpdate` implicitly adopts the id (legacy no-`blockStart` usage). A `blockCancel` with no open block still appends `[cancelled]` (lenient path, follow-up candidate) |
 | `TranscriptRenderer` | `class` | **Stable** | Low | `applyCore(_:)` + `transcriptLines` are the contract |
 | `TranscriptRenderOptions` | `struct` | **Stable** | Low | Configurable summary/notification limits; v1.1.0 |
-| `StreamingTranscriptAppendState` | `struct` | **Stable** | Low | Delta computation for append-only streaming; commit via `consume(transcript:activeRange:stableLineCount:)` (v1.3.0) — the two-argument form is deprecated (duplicates lines when mid-stream re-renders change earlier lines) |
+| `StreamingTranscriptAppendState` | `struct` | **Stable** | Low | Delta computation for append-only streaming; commit via `consume(transcript:activeRange:stableLineCount:unsettledFrom:)` (stable prefix v1.3.0; `unsettledFrom` holdback for pending operation slots added later — pass `TranscriptRenderer.firstUnsettledLineIndex`) — the two-argument form is deprecated (duplicates lines when mid-stream re-renders change earlier lines) |
 | `RenderMessage` | `enum` | **Deprecated** | N/A | Use `CoreRenderEvent` via `LegacyRenderEventAdapter` |
 | `RenderEvent` | `enum` | **Deprecated** | N/A | Use `CoreRenderEvent` instead |
 | `LegacyRenderEventAdapter` | `struct` | **Deprecated** | N/A | Bridge from old → new events |
@@ -167,8 +167,9 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 - `TranscriptRenderer.applyCore(_:)` — apply generic events.
 - `TranscriptRenderer.transcriptLines` — read-only snapshot.
 - `TranscriptRenderer.preferredPinnedRange` — streaming protection hint.
-- `StreamingTranscriptAppendState.consume(transcript:activeRange:stableLineCount:)` — delta for append-only UIs; pass `TranscriptRenderer.activeStreamingStableLineCount`.
+- `StreamingTranscriptAppendState.consume(transcript:activeRange:stableLineCount:unsettledFrom:)` — delta for append-only UIs; pass `TranscriptRenderer.activeStreamingStableLineCount` and `TranscriptRenderer.firstUnsettledLineIndex` (`unsettledFrom` is defaulted, so the three-argument call still compiles but will not hold back pending operation status lines).
 - `TranscriptRenderer.activeStreamingStableLineCount` — engine-certified immutable prefix of the active streaming block (v1.3.0).
+- `TranscriptRenderer.firstUnsettledLineIndex` — first line that may still be rewritten in place (earliest pending operation status line); nil when no operation is pending.
 - ~~`StreamingTranscriptAppendState.consume(transcript:activeRange:)`~~ — **deprecated in 1.3.0**, removed in 2.0.
 
 ---

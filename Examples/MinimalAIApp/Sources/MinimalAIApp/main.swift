@@ -309,7 +309,8 @@ final class MinimalAIApp: @unchecked Sendable {
         let delta = appendState.consume(
             transcript: transcript.transcriptLines,
             activeRange: transcript.activeStreamingRange,
-            stableLineCount: transcript.activeStreamingStableLineCount
+            stableLineCount: transcript.activeStreamingStableLineCount,
+            unsettledFrom: transcript.firstUnsettledLineIndex
         )
         if !delta.isEmpty {
             tui.render(committed: [], live: [], cursorOffset: 0)
