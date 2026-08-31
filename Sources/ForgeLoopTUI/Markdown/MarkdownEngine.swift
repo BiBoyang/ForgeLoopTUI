@@ -567,6 +567,26 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         }
     }
 
+    /// Whether OSC 8 hyperlinks are emitted for links and bare URLs: on for
+    /// styled themes, off for `.none` so the plain theme keeps the
+    /// pre-hyperlink byte stream exactly.
+    private var hyperlinksEnabled: Bool { theme != .none }
+
+    /// Wraps already-styled `text` as an OSC 8 hyperlink to `url`
+    /// (`ESC ] 8 ;; url ST text ESC ] 8 ;; ST`). Terminals without OSC 8
+    /// support absorb the sequences silently, leaving the styled text.
+    private func osc8Hyperlink(url: String, text styledText: String) -> String {
+        "\u{1B}]8;;\(url)\u{1B}\\\(styledText)\u{1B}]8;;\u{1B}\\"
+    }
+
+    /// Trailing characters trimmed from a bare-URL autolink target: closing
+    /// brackets, sentence punctuation, and quotes are almost never part of
+    /// the URL itself (`(https://example.com)。` keeps `)。` outside).
+    private static let bareURLTrailingTrim: Set<Character> = [
+        ".", ",", ";", ":", "!", "?", ")", "]", "}", ">", "\"", "'",
+        "。", "，", "；", "！", "？", "）", "】", "」", "』", "、",
+    ]
+
     /// Apply inline formatting: code spans (`` ` ``), bold (`**`), italic (`*`),
     /// strikethrough (`~~`), and links (`[text](url)`). Code spans take priority — no formatting within them.
     private func applyInlineFormatting(_ text: String) -> String {
@@ -587,15 +607,52 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
                 if afterBracket < text.endIndex, text[afterBracket] == "(",
                    let closeParen = text[text.index(after: afterBracket)...].firstIndex(of: ")") {
                     let linkText = String(text[text.index(after: i)..<closeBracket])
-                    let url = String(text[text.index(after: afterBracket)..<closeParen])
+                    // An optional quoted title may follow the URL
+                    // (`[text](url "title")`): it is display text, not part
+                    // of the link target — cut the URL at the first space.
+                    let rawURL = String(text[text.index(after: afterBracket)..<closeParen])
+                    let url = String(rawURL.prefix(while: { !$0.isWhitespace }))
                     if !linkText.isEmpty, !url.isEmpty {
-                        result += "\u{1B}[4m\(linkText)\u{1B}[0m \u{1B}[2m(\(url))\u{1B}[0m"
+                        let styledText = "\u{1B}[4m\(linkText)\u{1B}[0m"
+                        if hyperlinksEnabled {
+                            result += osc8Hyperlink(url: url, text: styledText)
+                                + " \u{1B}[2m(\(url))\u{1B}[0m"
+                        } else {
+                            result += "\(styledText) \u{1B}[2m(\(url))\u{1B}[0m"
+                        }
                         i = text.index(after: closeParen)
                         linkParsed = true
                     }
                 }
             }
             if linkParsed { continue }
+            // Bare URL autolink (http/https only): underlined OSC 8. Runs
+            // after code spans and `[text](url)` so neither is re-matched;
+            // fence content never reaches inline formatting. Trailing
+            // punctuation (ASCII and CJK) is trimmed off the link target.
+            var bareURLParsed = false
+            if hyperlinksEnabled, text[i] == "h" {
+                let rest = text[i...]
+                let schemeLength = rest.hasPrefix("https://") ? 8 : (rest.hasPrefix("http://") ? 7 : 0)
+                if schemeLength > 0 {
+                    let urlStart = text.index(i, offsetBy: schemeLength)
+                    var urlEnd = urlStart
+                    while urlEnd < text.endIndex, !text[urlEnd].isWhitespace {
+                        urlEnd = text.index(after: urlEnd)
+                    }
+                    while urlEnd > urlStart,
+                          Self.bareURLTrailingTrim.contains(text[text.index(before: urlEnd)]) {
+                        urlEnd = text.index(before: urlEnd)
+                    }
+                    if urlEnd > urlStart {
+                        let url = String(text[i..<urlEnd])
+                        result += osc8Hyperlink(url: url, text: "\u{1B}[4m\(url)\u{1B}[0m")
+                        i = urlEnd
+                        bareURLParsed = true
+                    }
+                }
+            }
+            if bareURLParsed { continue }
             let nextIdx = text.index(after: i)
             if nextIdx < text.endIndex, text[i] == "*", text[nextIdx] == "*" {
                 // Bold: **text**

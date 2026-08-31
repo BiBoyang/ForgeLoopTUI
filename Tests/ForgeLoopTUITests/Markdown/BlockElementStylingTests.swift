@@ -49,10 +49,80 @@ final class BlockElementStylingTests: XCTestCase {
     func testQuoteWithLinkContentIsNotCorruptedByChromeStyling() {
         // Styling runs after inline parsing: the `[` inside `ESC[2m` must not
         // be mistaken for link syntax (regression guard for the styling order).
+        // The link text is OSC 8 hyperlinked (default theme).
         XCTAssertEqual(
             render("> see [docs](https://x.example) here"),
-            ["\(esc)[2m│\(esc)[0m see \(esc)[4mdocs\(esc)[0m \(esc)[2m(https://x.example)\(esc)[0m here"]
+            ["\(esc)[2m│\(esc)[0m see \(esc)]8;;https://x.example\(esc)\\\(esc)[4mdocs\(esc)[0m\(esc)]8;;\(esc)\\ \(esc)[2m(https://x.example)\(esc)[0m here"]
         )
+    }
+
+    // MARK: - Hyperlinks (OSC 8)
+
+    func testLinkTextIsOSC8HyperlinkedUnderDefaultTheme() {
+        XCTAssertEqual(
+            render("See [the docs](https://example.com) here"),
+            ["See \(esc)]8;;https://example.com\(esc)\\\(esc)[4mthe docs\(esc)[0m\(esc)]8;;\(esc)\\ \(esc)[2m(https://example.com)\(esc)[0m here"]
+        )
+    }
+
+    func testBareURLIsOSC8HyperlinkedAndUnderlined() {
+        XCTAssertEqual(
+            render("visit https://example.com/foo. now"),
+            ["visit \(esc)]8;;https://example.com/foo\(esc)\\\(esc)[4mhttps://example.com/foo\(esc)[0m\(esc)]8;;\(esc)\\. now"]
+        )
+    }
+
+    func testBareURLTrailingPunctuationStaysOutsideLink() {
+        // The user's actual shape: URL inside CJK prose with `)` and `。`
+        // trailing — punctuation is trimmed off the link target.
+        XCTAssertEqual(
+            render("包含 (https://example.com) 和普通文字混合。"),
+            ["包含 (\(esc)]8;;https://example.com\(esc)\\\(esc)[4mhttps://example.com\(esc)[0m\(esc)]8;;\(esc)\\) 和普通文字混合。"]
+        )
+    }
+
+    func testBareURLInsideCodeSpanAndFenceStaysPlain() {
+        XCTAssertEqual(
+            render("`https://example.com` end"),
+            ["\(esc)[7mhttps://example.com\(esc)[0m end"]
+        )
+        XCTAssertEqual(
+            render("```\nhttps://example.com\n```"),
+            [
+                "\(esc)[2m┌─ code\(esc)[0m",
+                "│ https://example.com",
+                "\(esc)[2m└─ end code\(esc)[0m",
+            ]
+        )
+    }
+
+    func testNoneThemeEmitsNoOSC8() {
+        let plain: [String] = render(
+            "See [the docs](https://example.com) and https://a.example 。",
+            options: .init(theme: .none)
+        )
+        // `.none` pins the pre-hyperlink byte stream: markdown links keep
+        // their underline + faint-URL styling, bare URLs stay plain text.
+        XCTAssertEqual(
+            plain,
+            ["See \(esc)[4mthe docs\(esc)[0m \(esc)[2m(https://example.com)\(esc)[0m and https://a.example 。"]
+        )
+    }
+
+    func testStreamingLinkLineConvergesToStaticRender() {
+        // Character-by-character replay: partial URLs mid-line are
+        // re-rendered deterministically until the line completes.
+        let sample = "See [the docs](https://example.com) and https://a.example/x)."
+        let staticRender = render(sample)
+        let streaming = StreamingMarkdownEngine()
+        var accumulated = ""
+        var last: [String] = []
+        for character in sample {
+            accumulated.append(character)
+            last = streaming.render(text: accumulated, isFinal: false)
+        }
+        last = streaming.render(text: accumulated, isFinal: true)
+        XCTAssertEqual(last, staticRender)
     }
 
     // MARK: - Code fences

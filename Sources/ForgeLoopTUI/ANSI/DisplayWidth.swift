@@ -1,11 +1,14 @@
 import Foundation
 
-/// Returns `text` with ANSI CSI escape sequences removed.
+/// Returns `text` with ANSI CSI and OSC escape sequences removed.
 ///
 /// A CSI sequence spans `ESC [`, any parameter/intermediate bytes, and one
-/// final byte in `0x40...0x7E`. An unterminated trailing CSI is dropped
-/// together with the remainder of the string; other escape sequences are
-/// preserved verbatim. Useful when measuring or laying out styled text.
+/// final byte in `0x40...0x7E`. An OSC sequence spans `ESC ]` and runs to a
+/// BEL or ST (`ESC \`) terminator — e.g. the `ESC ] 8 ;; url ST` hyperlinks
+/// the markdown engine emits for links. An unterminated trailing CSI or OSC
+/// is dropped together with the remainder of the string; other escape
+/// sequences are preserved verbatim. Useful when measuring or laying out
+/// styled text.
 public func ansiStripped(_ text: String) -> String {
     var result = ""
     var index = text.startIndex
@@ -28,6 +31,30 @@ public func ansiStripped(_ text: String) -> String {
                 }
                 continue
             }
+            if next < text.endIndex, text[next] == "]" {
+                var paramIndex = text.index(after: next)
+                while paramIndex < text.endIndex {
+                    let paramChar = text[paramIndex]
+                    if paramChar == "\u{07}" {
+                        // BEL terminator.
+                        index = text.index(after: paramIndex)
+                        break
+                    }
+                    if paramChar == "\u{1B}" {
+                        let stIndex = text.index(after: paramIndex)
+                        if stIndex < text.endIndex, text[stIndex] == "\\" {
+                            // ST (ESC \) terminator.
+                            index = text.index(after: stIndex)
+                            break
+                        }
+                    }
+                    paramIndex = text.index(after: paramIndex)
+                }
+                if paramIndex >= text.endIndex {
+                    break
+                }
+                continue
+            }
         }
         result.append(char)
         index = text.index(after: index)
@@ -37,7 +64,7 @@ public func ansiStripped(_ text: String) -> String {
 
 /// The number of terminal cells `text` occupies when rendered.
 ///
-/// ANSI CSI sequences are stripped first (see ``ansiStripped(_:)``), then the
+/// ANSI CSI and OSC sequences are stripped first (see ``ansiStripped(_:)``), then the
 /// remaining text is measured per grapheme cluster: ASCII control characters
 /// and combining marks count 0, wide scalars (CJK, fullwidth forms, most
 /// emoji) count 2, and multi-scalar clusters that render as a single glyph —

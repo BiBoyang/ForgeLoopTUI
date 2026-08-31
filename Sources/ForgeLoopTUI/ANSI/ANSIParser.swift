@@ -4,6 +4,9 @@
 /// Design goals:
 /// - Support CSI sequences fragmented across `write()` calls.
 /// - Minimal: recognizes only text and CSI, with no styling semantics.
+/// - OSC sequences (`ESC ] …`, e.g. OSC 8 hyperlinks) are swallowed whole —
+///   terminated by BEL or ST (`ESC \`) — matching how a real terminal absorbs
+///   them without displaying the payload.
 /// - Reusable by consumers such as `VirtualTerminal`.
 public struct ANSIParser: Sendable {
     public enum Event: Sendable {
@@ -23,6 +26,11 @@ public struct ANSIParser: Sendable {
         case csiEntry
         case csiParam
         case csiIntermediate
+        /// Inside an OSC sequence (`ESC ] …`); payload is swallowed.
+        case osc
+        /// Inside OSC after an ESC: `\` ends the sequence (ST), anything
+        /// else resumes the OSC payload.
+        case oscEscape
     }
 
     private var state: State = .ground
@@ -48,6 +56,8 @@ public struct ANSIParser: Sendable {
             if scalar == "[" {
                 state = .csiEntry
                 resetCSIBuffers()
+            } else if scalar == "]" {
+                state = .osc
             } else if scalar == "\u{1B}" {
                 // 连续的 ESC，丢弃前一个，以新的 ESC 重新进入 escape
                 state = .escape
@@ -103,6 +113,26 @@ public struct ANSIParser: Sendable {
                 // intermediate 之后只能继续 intermediate 或 final，否则丢弃
                 resetCSIBuffers()
                 state = .ground
+            }
+
+        case .osc:
+            if scalar == "\u{07}" {
+                // BEL terminator.
+                state = .ground
+            } else if scalar == "\u{1B}" {
+                state = .oscEscape
+            }
+            // 其余负载字节全部吞掉，不发事件。
+
+        case .oscEscape:
+            if scalar == "\\" {
+                // ST (ESC \) terminator.
+                state = .ground
+            } else if scalar == "\u{1B}" {
+                state = .oscEscape
+            } else {
+                // 不是 ST：ESC 视为负载的一部分，继续吞 OSC。
+                state = .osc
             }
         }
     }

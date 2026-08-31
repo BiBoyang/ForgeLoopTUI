@@ -109,6 +109,20 @@ struct DisplayWidthTests {
         #expect(visibleWidth("\u{1B}[1;42mok\u{1B}[0m") == 2)
     }
 
+    @Test("OSC sequences are stripped before measuring")
+    func testOSCStripping() {
+        // OSC 8 hyperlink, ST-terminated: only the visible text counts.
+        let link = "\u{1B}]8;;https://example.com\u{1B}\\text\u{1B}]8;;\u{1B}\\"
+        #expect(ansiStripped(link) == "text")
+        #expect(visibleWidth(link) == 4)
+        // BEL-terminated OSC (e.g. window title) is stripped too.
+        #expect(ansiStripped("\u{1B}]0;title\u{07}body") == "body")
+        // OSC around wide text keeps cluster semantics.
+        #expect(visibleWidth("\u{1B}]8;;u\u{1B}\\中文\u{1B}]8;;\u{1B}\\") == 4)
+        // An unterminated trailing OSC is dropped with the remainder.
+        #expect(ansiStripped("keep\u{1B}]8;;https://partial") == "keep")
+    }
+
     // MARK: - physicalRows
 
     @Test("physicalRows wraps by grapheme-cluster width")

@@ -282,7 +282,9 @@ final class HTMLDegraderTests: XCTestCase {
         let engine = StreamingMarkdownEngine()
         let frame1 = "intro\n<img src=\"https://example.com/a.png\"\n"
         let lines1 = engine.render(text: frame1, isFinal: false)
-        XCTAssertEqual(lines1, ["intro", "<img src=\"https://example.com/a.png\"", ""])
+        // The bare URL inside the raw passthrough line is OSC 8 hyperlinked
+        // (default theme); the line itself is otherwise unchanged.
+        XCTAssertEqual(lines1, ["intro", "<img src=\"\u{1B}]8;;https://example.com/a.png\u{1B}\\\u{1B}[4mhttps://example.com/a.png\u{1B}[0m\u{1B}]8;;\u{1B}\\\"", ""])
         // intro is stable; the tag opener is not.
         XCTAssertEqual(engine.stableRenderedLineCount, 1)
     }

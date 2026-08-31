@@ -225,8 +225,8 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 |------|------|-----------|----------------------|------------------|
 | `MarkdownEngine` | `protocol` | **Stable** | Medium | New requirements are breaking; prefer `StreamingMarkdownEngine`. `stableRenderedLineCount` (v1.3.0) ships with a default implementation returning 0, so existing conformers are unaffected |
 | `MarkdownRenderOptions` | `struct` | **Stable** | Low | Options value type; `theme` added in v1.3.0 (default `MarkdownTheme.default`) — block-chrome styling, `.none` pins the pre-theme plain byte stream |
-| `MarkdownTheme` | `struct` | **Provisional** | Medium | Visual theme for markdown block chrome (heading levels 1–6, table header/borders, blockquote bar, fence borders/language label, task-list markers) plus `code` syntax-highlight styles; pure value type injected via `MarkdownRenderOptions.theme` — no singletons, no environment probing. Consumed by `StreamingMarkdownEngine` for heading/table/quote/fence styling (v1.3.0; whole-line/whole-cell wraps only, never inside `padded()`/`truncate()`); `code` slots drive Python fence highlighting (whole-segment wraps only); task markers await wiring. Slot set may grow in MINOR releases |
-| `MarkdownTheme.CodeHighlightStyles` | `struct` | **Provisional** | Low | Keyword/string/comment/number styles for syntax-highlighted fence content; consumed by the built-in line-level highlighter for `python`/`py` fences (unrecognized languages render plain); categories may be added in MINOR releases |
+| `MarkdownTheme` | `struct` | **Provisional** | Medium | Visual theme for markdown block chrome (heading levels 1–6, table header/borders, blockquote bar, fence borders/language label, task-list markers) plus `code` syntax-highlight styles; pure value type injected via `MarkdownRenderOptions.theme` — no singletons, no environment probing. Consumed by `StreamingMarkdownEngine` for heading/table/quote/fence styling (v1.3.0; whole-line/whole-cell wraps only, never inside `padded()`/`truncate()`); `code` slots drive Python and JavaScript fence highlighting (whole-segment wraps only); task markers await wiring. Slot set may grow in MINOR releases |
+| `MarkdownTheme.CodeHighlightStyles` | `struct` | **Provisional** | Low | Keyword/string/comment/number styles for syntax-highlighted fence content; consumed by the built-in line-level highlighters for `python`/`py` and `javascript`/`js` fences (unrecognized languages render plain); categories may be added in MINOR releases |
 | `MarkdownStyle` | `struct` | **Provisional** | Low | Ordered SGR attribute list; `applied(to:)` wraps text as `ESC[…m` + text + `ESC[0m`; empty styles/empty text pass through unchanged (no escape bytes) |
 | `MarkdownSGRAttribute` | `enum` | **Provisional** | Low | SGR attributes (`.bold`/`.faint`/`.italic`/`.underline`/`.inverse`/`.strikethrough`/`.foreground`/`.background`); `parameters` exposes the raw SGR codes |
 | `MarkdownSGRColor` | `enum` | **Provisional** | Low | Terminal color as SGR parameters: `.standard(0–7)` / `.bright(0–7)` / `.indexed(0–255)` / `.rgb(red:green:blue:)`; range validation is the caller's responsibility |
@@ -252,15 +252,15 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 | Type | Kind | Stability | Breaking-change risk | Migration advice |
 |------|------|-----------|----------------------|------------------|
 | `SGRState` | `struct` | **Provisional** | Medium | May gain new attributes (italic, underline, strikethrough) |
-| `visibleWidth(_:)` | `func` | **Stable** | Low | ANSI-aware terminal-cell width measured per grapheme cluster (wide CJK/emoji 2 cells, combining marks 0); replaces hand-written width helpers in consumers |
-| `ansiStripped(_:)` | `func` | **Stable** | Low | CSI escape stripping backing `visibleWidth(_:)`; replaces hand-written strippers in consumers |
+| `visibleWidth(_:)` | `func` | **Stable** | Low | ANSI-aware terminal-cell width measured per grapheme cluster (wide CJK/emoji 2 cells, combining marks 0); CSI and OSC sequences (e.g. OSC 8 hyperlinks) are stripped before measuring; replaces hand-written width helpers in consumers |
+| `ansiStripped(_:)` | `func` | **Stable** | Low | CSI and OSC escape stripping backing `visibleWidth(_:)`; replaces hand-written strippers in consumers |
 | `ANSIParser` | `struct` | **Internal-detail** | High | State machine; consumers should use `Terminal` protocol |
 | `ANSIParser.Event` | `enum` | **Internal-detail** | High | Parser events |
 | `physicalRows(for:width:)` | `func` | **Internal-detail** | High | Use `LayoutBudget` / `ScreenLayoutRenderer` instead |
 
 **Consumer dependency points:**
 - `SGRState` + `Color` — if building custom ANSI-aware components.
-- `visibleWidth(_:)` / `ansiStripped(_:)` — ANSI-aware width measurement and CSI stripping for custom layout math.
+- `visibleWidth(_:)` / `ansiStripped(_:)` — ANSI-aware width measurement and CSI/OSC stripping for custom layout math.
 - Prefer `Terminal` protocol and `VirtualTerminal` over direct `ANSIParser` usage.
 
 ---

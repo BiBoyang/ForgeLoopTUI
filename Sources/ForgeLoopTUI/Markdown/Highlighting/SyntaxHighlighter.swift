@@ -68,6 +68,8 @@ final class FenceHighlighter {
         switch token {
         case "python", "py":
             self.init(PythonHighlighter.self, styles: styles)
+        case "javascript", "js":
+            self.init(JavaScriptHighlighter.self, styles: styles)
         default:
             return nil
         }
