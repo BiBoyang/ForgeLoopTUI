@@ -70,6 +70,15 @@ public func ansiStripped(_ text: String) -> String {
 /// emoji) count 2, and multi-scalar clusters that render as a single glyph —
 /// ZWJ sequences, skin-tone modifiers, VS16 emoji presentation, RI flag
 /// pairs — count 2 as a whole. Everything else counts 1.
+///
+/// East Asian Ambiguous scalars (`…`, `▓`, box-drawing characters, …) count
+/// 1, following the wcwidth convention most terminals adopt. Terminals or
+/// font configurations that render ambiguous characters double-width break
+/// this assumption for every piece of box-drawing chrome the library emits,
+/// not just for padding math, so it is not a supported configuration; the
+/// library's own width-sensitive chrome (e.g. the default table truncation
+/// indicator) avoids ambiguous glyphs so bordered layouts stay aligned in
+/// every terminal.
 public func visibleWidth(_ text: String) -> Int {
     let stripped = ansiStripped(text)
     // Fast path: pure ASCII has no grapheme-cluster subtleties — every

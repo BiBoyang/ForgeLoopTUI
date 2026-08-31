@@ -23,6 +23,15 @@ public struct TableRenderPolicy: Sendable, Equatable {
     public var maxRenderedWidth: Int
     public var minColumnWidth: Int
     public var maxColumnWidth: Int?
+    /// Marker appended where a cell is cut to fit its column. The default
+    /// `"..."` is plain ASCII: truncated cells sit flush against the column's
+    /// right border, so the marker must occupy exactly the width
+    /// `visibleWidth` budgets for it in every terminal. Single-character
+    /// ellipsis-style glyphs (`…`, `‥`, `⋯`) are East Asian Ambiguous and
+    /// render double-width in some terminal/font configurations, which would
+    /// push that row's right border one cell out. Pass such a glyph
+    /// explicitly only when the target terminal is known to render ambiguous
+    /// characters single-width.
     public var truncationIndicator: String
     public var overflowBehavior: TableOverflowBehavior
     public var wideTableStrategy: WideTableStrategy
@@ -35,7 +44,7 @@ public struct TableRenderPolicy: Sendable, Equatable {
         maxRenderedWidth: 80,
         minColumnWidth: 6,
         maxColumnWidth: 24,
-        truncationIndicator: "…",
+        truncationIndicator: "...",
         overflowBehavior: .compactThenTruncateThenDegrade,
         wideTableStrategy: .alwaysBox,
         autoReadableTruncatedCellThreshold: 0.4,
@@ -46,7 +55,7 @@ public struct TableRenderPolicy: Sendable, Equatable {
         maxRenderedWidth: Int = 80,
         minColumnWidth: Int = 6,
         maxColumnWidth: Int? = 24,
-        truncationIndicator: String = "…",
+        truncationIndicator: String = "...",
         overflowBehavior: TableOverflowBehavior = .compactThenTruncateThenDegrade,
         wideTableStrategy: WideTableStrategy = .alwaysBox,
         autoReadableTruncatedCellThreshold: Double = 0.4,
@@ -55,7 +64,7 @@ public struct TableRenderPolicy: Sendable, Equatable {
         self.maxRenderedWidth = maxRenderedWidth
         self.minColumnWidth = minColumnWidth
         self.maxColumnWidth = maxColumnWidth
-        self.truncationIndicator = truncationIndicator.isEmpty ? "…" : truncationIndicator
+        self.truncationIndicator = truncationIndicator.isEmpty ? "..." : truncationIndicator
         self.overflowBehavior = overflowBehavior
         self.wideTableStrategy = wideTableStrategy
         self.autoReadableTruncatedCellThreshold = autoReadableTruncatedCellThreshold

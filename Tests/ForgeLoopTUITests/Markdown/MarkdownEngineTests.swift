@@ -269,7 +269,10 @@ final class MarkdownEngineTests: XCTestCase {
         let lines = engine.render(text: text, isFinal: true)
         XCTAssertTrue(lines.first?.hasPrefix("┌") == true)
         XCTAssertTrue(lines.contains(where: { $0.contains("col") && $0.contains("detail") }))
-        XCTAssertTrue(lines.contains(where: { $0.contains("…") }))
+        // The default truncation indicator is width-deterministic ASCII
+        // ("..."), never the East-Asian-Ambiguous "…" (TASK-35).
+        XCTAssertTrue(lines.contains(where: { $0.contains("...") }))
+        XCTAssertFalse(lines.contains(where: { $0.contains("…") }))
         XCTAssertTrue(lines.last?.hasPrefix("└") == true)
         XCTAssertFalse(lines.contains(where: { $0.contains(wideCell) }))
     }
@@ -433,7 +436,8 @@ final class MarkdownEngineTests: XCTestCase {
         """
         let lines = engine.render(text: text, isFinal: true)
         XCTAssertTrue(lines.first?.hasPrefix("┌") == true)
-        XCTAssertTrue(lines.contains(where: { $0.contains("…") }))
+        XCTAssertTrue(lines.contains(where: { $0.contains("...") }))
+        XCTAssertFalse(lines.contains(where: { $0.contains("…") }))
         XCTAssertTrue(lines.last?.hasPrefix("└") == true)
         XCTAssertFalse(lines.contains(where: { $0.contains("| verylongname |") }))
     }
@@ -829,11 +833,63 @@ final class TranscriptRendererMarkdownTests: XCTestCase {
         """
 
         let lines = engine.render(text: text, isFinal: true)
-        XCTAssertTrue(lines.contains(where: { $0.contains("…") }))
+        XCTAssertTrue(lines.contains(where: { $0.contains("...") }))
         let rowLines = lines.filter { $0.contains("│") }
         XCTAssertEqual(Set(rowLines.map { visibleWidth($0) }).count, 1)
-        if let cut = rowLines.first(where: { $0.contains("…") && $0.contains("\u{1B}[1m") }) {
+        if let cut = rowLines.first(where: { $0.contains("...") && $0.contains("\u{1B}[1m") }) {
             XCTAssertTrue(cut.contains("\u{1B}[0m"), "a cut bold span must be closed with a reset")
         }
+    }
+
+    // MARK: - Ambiguous-width truncation indicator (TASK-35)
+
+    /// The truncation indicator sits flush against a column's right border,
+    /// so it must occupy exactly the budgeted width in every terminal:
+    /// East-Asian-Ambiguous glyphs like "…" render double-width in some
+    /// terminal/font configurations, which would push that row's border one
+    /// cell out. The default indicator is therefore width-deterministic
+    /// ASCII; terminals known to be ambiguous=1 can still opt back into "…".
+    func testTableTruncationIndicatorDefaultsToWidthStableASCII() {
+        XCTAssertEqual(TableRenderPolicy.default.truncationIndicator, "...")
+        XCTAssertEqual(TableRenderPolicy().truncationIndicator, "...")
+        // The empty-string fallback must not reintroduce an ambiguous glyph.
+        XCTAssertEqual(TableRenderPolicy(truncationIndicator: "").truncationIndicator, "...")
+    }
+
+    func testStreamingEngineTruncatedTableStaysBorderAlignedWithDefaultIndicator() {
+        let engine = StreamingMarkdownEngine(options: MarkdownRenderOptions(theme: .none))
+        let wideCell = String(repeating: "x", count: 120)
+        let text = """
+        | name | detail |
+        | --- | --- |
+        | ok | \(wideCell) |
+        """
+
+        let lines = engine.render(text: text, isFinal: true)
+        // Border lines and every content row occupy one identical width.
+        XCTAssertEqual(Set(lines.map { visibleWidth($0) }).count, 1)
+        // The truncated cell carries the width-stable indicator…
+        XCTAssertTrue(lines.contains(where: { $0.contains("...") }))
+        // …and no East-Asian-Ambiguous ellipsis leaks into bordered output.
+        XCTAssertFalse(lines.contains(where: { $0.contains("…") }))
+    }
+
+    func testStreamingEngineHonorsExplicitAmbiguousTruncationIndicator() {
+        let engine = StreamingMarkdownEngine(
+            options: .init(
+                tablePolicy: .init(truncationIndicator: "…"),
+                theme: .none
+            )
+        )
+        let wideCell = String(repeating: "x", count: 120)
+        let text = """
+        | name | detail |
+        | --- | --- |
+        | ok | \(wideCell) |
+        """
+
+        let lines = engine.render(text: text, isFinal: true)
+        XCTAssertTrue(lines.contains(where: { $0.contains("…") }))
+        XCTAssertEqual(Set(lines.map { visibleWidth($0) }).count, 1)
     }
 }
