@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import ForgeLoopTUI
 import Darwin
@@ -103,5 +104,52 @@ struct RawTTYTests {
         tty.restore()
 
         #expect(box.value == EBADF)
+    }
+
+    @Test("enter pushes kitty keyboard flags, restore pops them")
+    func testKittyKeyboardPushPop() throws {
+        // Open a PTY pair; bytes the library writes to the slave are
+        // readable on the master side.
+        let master = posix_openpt(O_RDWR)
+        guard master >= 0, grantpt(master) == 0, unlockpt(master) == 0,
+              let slaveName = ptsname(master) else {
+            if master >= 0 { close(master) }
+            return // skip: no PTY available in this environment
+        }
+        defer { close(master) }
+        guard fcntl(master, F_SETFL, O_NONBLOCK) == 0 else { return }
+        let slave = open(String(cString: slaveName), O_RDWR)
+        guard slave >= 0 else { return }
+        defer { close(slave) }
+
+        let tty = RawTTY(fd: slave, kittyControlFD: slave)
+        try tty.enter()
+        #expect(readPTYMaster(master, timeout: 1.0) == "\u{1B}[>1u")
+
+        tty.restore()
+        #expect(readPTYMaster(master, timeout: 1.0) == "\u{1B}[<u")
+
+        // restore 幂等：第二次 restore 不再写 pop
+        tty.restore()
+        #expect(readPTYMaster(master, timeout: 0.1).isEmpty)
+    }
+
+    /// 非阻塞读取 PTY master：读到数据后 drain 完即返回，无数据则轮询至 timeout。
+    private func readPTYMaster(_ master: Int32, timeout: TimeInterval) -> String {
+        var bytes: [UInt8] = []
+        var buf = [UInt8](repeating: 0, count: 64)
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            let n = read(master, &buf, buf.count)
+            if n > 0 {
+                bytes.append(contentsOf: buf[..<n])
+            } else if n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK) {
+                if !bytes.isEmpty { break }
+                Thread.sleep(forTimeInterval: 0.005)
+            } else {
+                break
+            }
+        } while Date() < deadline
+        return String(decoding: bytes, as: UTF8.self)
     }
 }

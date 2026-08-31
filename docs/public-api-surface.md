@@ -128,7 +128,7 @@ Scope: every `public` declaration in `Sources/ForgeLoopTUI` that a third-party c
 | `KeybindingRegistry` | `struct` | **Stable** | Low | Registry with `register` / `unregister` / `match`; enforces prefix-conflict invariants; throws `duplicate` / `prefixConflict` / `containsPaste` |
 | `KeyResolver` | `class` | **Stable** | Medium | Stateful chord resolver driven by an `InputClock`; emits `ResolvedKey`. **Non-`Sendable`** — all `feed`/`tick`/`flush`/`replaceRegistry` calls must be serialized (e.g. a single actor or thread). |
 | `ResolvedKey` | `enum` | **Stable** | Low | `.action(_)` or `.passthrough(KeyEvent)` |
-| `RawTTY` | `class` | **Stable** | Low | Raw TTY lifecycle; `onRestoreFailure` hook reports `tcsetattr` restore errno |
+| `RawTTY` | `class` | **Stable** | Low | Raw TTY lifecycle; `onRestoreFailure` hook reports `tcsetattr` restore errno; `enter()`/`restore()` push/pop the kitty keyboard disambiguate flag (`ESC[>1u` / `ESC[<u`) |
 | `RawTTYError` | `enum` | **Stable** | Very low | `.notATTY`, `.alreadyEntered`, etc. |
 | `withRawTTY(fd:body:)` | `func` | **Stable** | Very low | RAII helper |
 | `InputReader` | `class` | **Stable** | Medium | High-level reader; event-loop integration may evolve |

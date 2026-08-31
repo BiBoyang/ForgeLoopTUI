@@ -255,6 +255,73 @@ struct KeyParserTests {
         #expect(events == [KeyEvent(key: .tab, modifiers: .shift)])
     }
 
+    // MARK: - kitty keyboard protocol (CSI-u)
+
+    @Test("CSI-u: Shift+Enter / Ctrl+Enter / plain Enter")
+    func testCSIUEnter() {
+        let events = parser.parse([
+            .csi(params: [13, 2], command: "u"),  // Shift+Enter
+            .csi(params: [13, 5], command: "u"),  // Ctrl+Enter
+            .csi(params: [13], command: "u"),     // Enter via CSI-u，无修饰位
+            .csi(params: [13, 1], command: "u"),  // 显式 1 = 无修饰
+        ])
+        #expect(events == [
+            KeyEvent(key: .enter, modifiers: .shift),
+            KeyEvent(key: .enter, modifiers: .ctrl),
+            KeyEvent(key: .enter),
+            KeyEvent(key: .enter),
+        ])
+    }
+
+    @Test("CSI-u: modifier field decodes as N-1 bitmask")
+    func testCSIUModifierBitmask() {
+        let events = parser.parse([
+            .csi(params: [13, 4], command: "u"),  // Shift+Alt+Enter
+            .csi(params: [13, 6], command: "u"),  // Shift+Ctrl+Enter
+            .csi(params: [13, 8], command: "u"),  // Shift+Alt+Ctrl+Enter
+            .csi(params: [13, 3], command: "u"),  // Alt+Enter
+            .csi(params: [13, 7], command: "u"),  // Alt+Ctrl+Enter
+        ])
+        #expect(events == [
+            KeyEvent(key: .enter, modifiers: [.shift, .alt]),
+            KeyEvent(key: .enter, modifiers: [.shift, .ctrl]),
+            KeyEvent(key: .enter, modifiers: [.shift, .alt, .ctrl]),
+            KeyEvent(key: .enter, modifiers: .alt),
+            KeyEvent(key: .enter, modifiers: [.alt, .ctrl]),
+        ])
+    }
+
+    @Test("CSI-u: non-enter keycodes are dropped")
+    func testCSIUUnknownKeycodesDropped() {
+        let events = parser.parse([
+            .csi(params: [106, 5], command: "u"), // Ctrl+J 的 CSI-u 形式（未映射）
+            .csi(params: [109, 5], command: "u"), // Ctrl+M 的 CSI-u 形式
+            .csi(params: [27], command: "u"),     // Escape 的 CSI-u 形式
+            .csi(params: [], command: "u"),       // 无 keycode
+        ])
+        #expect(events.isEmpty)
+    }
+
+    @Test("end-to-end: CSI-u bytes through buffer and parser")
+    func testCSIUEndToEnd() {
+        let buf = ByteStreamBuffer()
+        // ESC [ 1 3 ; 2 u = Shift+Enter
+        let units = buf.feed([0x1B, 0x5B, 0x31, 0x33, 0x3B, 0x32, 0x75])
+        let events = parser.parse(units)
+        #expect(events == [KeyEvent(key: .enter, modifiers: .shift)])
+    }
+
+    @Test("incomplete CSI-u stays buffered and never decodes as enter")
+    func testIncompleteCSIU() {
+        let buf = ByteStreamBuffer()
+        // ESC [ 1 3 ; —— 缺 final byte，应保留在缓冲中
+        let units = buf.feed([0x1B, 0x5B, 0x31, 0x33, 0x3B])
+        #expect(units.isEmpty)
+        // flush 兜底为普通字节/字符，不产生 enter，也不崩溃
+        let events = parser.parse(buf.flush())
+        #expect(!events.contains(KeyEvent(key: .enter)))
+    }
+
     // MARK: - Alt combinations
 
     @Test("Alt+character via escape sequence")

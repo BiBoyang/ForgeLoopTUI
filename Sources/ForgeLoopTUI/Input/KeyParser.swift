@@ -2,6 +2,8 @@
 ///
 /// Supported input sources:
 /// - CSI sequences: arrow keys, function keys, Home/End, PageUp/PageDown, Insert/Delete
+/// - CSI-u sequences (kitty keyboard protocol): `ESC [ keycode [; modifiers] u`;
+///   currently only keycode 13 (Enter) is mapped, other keycodes are dropped
 /// - SS3 sequences: ESC O A/B/C/D/H/F/P/Q/R/S (common in xterm Application Keypad)
 /// - Alt+character: ESC followed by a regular character
 /// - Control characters: Ctrl+A-Z (0x01-0x1A), Tab, Enter, Backspace, Escape
@@ -121,6 +123,11 @@ public struct KeyParser: Sendable {
         case "H": return makeKey(.home, params: params)
         case "F": return makeKey(.end, params: params)
         case "Z": return makeKey(.tab, params: params, extraModifiers: .shift)
+        case "u":
+            // kitty 键盘增强协议（CSI-u）：ESC [ keycode [; modifiers] u。
+            // 目前只识别 keycode 13（Enter），其余 keycode 按未知键丢弃。
+            guard let keycode = params.first, keycode == 13 else { return nil }
+            return KeyEvent(key: .enter, modifiers: kittyModifiers(from: params))
         case "~":
             guard let code = params.first else { return nil }
             let key: Key
@@ -150,6 +157,19 @@ public struct KeyParser: Sendable {
         default:
             return nil
         }
+    }
+
+    /// kitty 键盘协议的修饰符解码：字段值为 N 时实际修饰位为 N-1，
+    /// bit0 = Shift，bit1 = Alt，bit2 = Ctrl；更高位（Super/Hyper 等）忽略。
+    /// 与 `extractModifiers` 的查表不同，这里按位解码，保留可表示的低位。
+    private func kittyModifiers(from params: [Int]) -> Modifiers {
+        guard params.count >= 2, let value = params.last, value > 1 else { return [] }
+        let bits = value - 1
+        var modifiers: Modifiers = []
+        if bits & 0x1 != 0 { modifiers.insert(.shift) }
+        if bits & 0x2 != 0 { modifiers.insert(.alt) }
+        if bits & 0x4 != 0 { modifiers.insert(.ctrl) }
+        return modifiers
     }
 
     /// 解析 SS3 序列（ESC O <final>）。

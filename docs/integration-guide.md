@@ -273,7 +273,9 @@ func appKeybindings() -> KeybindingRegistry<AppCommand> {
 }
 ```
 
-`KeyParser` emits Ctrl-letter combos with uppercase characters (e.g. `Ctrl-a` arrives as `.character("A"), modifiers: .ctrl`); register the uppercase form to match.
+`KeyParser` emits Ctrl-letter combos with uppercase characters (e.g. `Ctrl-a` arrives as `.character("A"), modifiers: .ctrl`); register the uppercase form to match. Note that `Ctrl-j` is its own key (`.character("J")` + `.ctrl`) — only CR (0x0D) decodes as `.enter`.
+
+When stdin is a TTY, `RawTTY.enter()` also pushes the kitty keyboard `disambiguate escape codes` flag (`ESC[>1u`, popped by `restore()`), so supporting terminals deliver Shift+Enter / Ctrl+Enter as CSI-u sequences (`ESC[13;2u` / `ESC[13;5u`) that `KeyParser` decodes to `.enter` with the corresponding modifiers. This lets consumers tell Shift+Enter (insert newline) apart from plain Enter (submit); terminals without kitty support keep the legacy byte behavior unchanged.
 
 ### 7.2 Feed events through the resolver
 

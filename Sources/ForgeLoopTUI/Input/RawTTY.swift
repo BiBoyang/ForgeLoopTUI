@@ -5,6 +5,15 @@ import Darwin
 /// Raw TTY lifecycle management: enters raw mode and restores the terminal
 /// attributes on exit or failure.
 ///
+/// `enter()` also pushes the kitty keyboard progressive-enhancement flag
+/// `disambiguate escape codes` (`ESC[>1u`) so modified Enter (e.g.
+/// Shift+Enter) arrives as a CSI-u sequence; `restore()` pops it (`ESC[<u`)
+/// on every exit path (`stop()`, `withRawTTY` defer, `deinit`). The
+/// sequences go to stdout — the channel `StdoutTerminal` already uses — not
+/// to the input fd: writing them to the input fd would make a later
+/// `tcsetattr(TCSAFLUSH)` block until the output queue drains. Terminals
+/// without kitty support absorb both sequences silently.
+///
 /// Usage (RAII style):
 /// ```swift
 /// let tty = RawTTY()
@@ -25,6 +34,17 @@ public final class RawTTY: @unchecked Sendable {
     private var originalTermios: termios?
     private var onRestoreFailureStorage: (@Sendable (Int32) -> Void)?
 
+    /// kitty 键盘增强协议（progressive enhancement）控制序列：
+    /// `enter()` 时 push `disambiguate escape codes`（flag 1），`restore()` 时 pop。
+    /// 不支持该协议的终端会静默吸收这两条未知 CSI，因此无条件启用是安全的。
+    /// 写入失败不影响 raw mode 生命周期（尽力而为，协议只是增强）。
+    private static let kittyKeyboardPush = "\u{1B}[>1u"
+    private static let kittyKeyboardPop = "\u{1B}[<u"
+
+    /// kitty 控制序列的输出 fd，默认 stdout（与 `StdoutTerminal` 同一通道）。
+    /// 仅在该 fd 是 TTY 时写入。internal 以便测试注入（如 PTY slave）。
+    let kittyControlFD: Int32
+
     /// Called with the failing `errno` when restoring termios via `tcsetattr`
     /// fails. `restore()` cannot throw (it also runs from `deinit`), so this
     /// hook is the failure-reporting channel. The callback fires while the
@@ -38,6 +58,13 @@ public final class RawTTY: @unchecked Sendable {
     /// - Parameter fd: The target file descriptor, defaulting to `STDIN_FILENO`.
     public init(fd: Int32 = STDIN_FILENO) {
         self.fd = fd
+        self.kittyControlFD = STDOUT_FILENO
+    }
+
+    /// 测试专用：指定 kitty 控制序列的输出 fd。
+    init(fd: Int32, kittyControlFD: Int32) {
+        self.fd = fd
+        self.kittyControlFD = kittyControlFD
     }
 
     /// Saves the current terminal attributes and switches to raw mode.
@@ -76,6 +103,10 @@ public final class RawTTY: @unchecked Sendable {
         guard tcsetattr(fd, TCSAFLUSH, &raw) == 0 else {
             throw RawTTYError.unableToSetAttributes(errno: errno)
         }
+
+        // 进入 raw mode 后开启 kitty 键盘协议，让 Shift+Enter 等组合键以
+        // CSI-u 序列到达（KeyParser 负责解析）。尽力而为，失败不视为 enter 失败。
+        Self.writeKittyControlSequence(Self.kittyKeyboardPush, to: kittyControlFD)
     }
 
     /// Restores the previously saved terminal attributes.
@@ -89,7 +120,14 @@ public final class RawTTY: @unchecked Sendable {
                 onRestoreFailureStorage?(errno)
             }
             originalTermios = nil
+            Self.writeKittyControlSequence(Self.kittyKeyboardPop, to: kittyControlFD)
         }
+    }
+
+    /// 向控制 fd 写入 kitty 控制序列；目标不是 TTY 时跳过。
+    private static func writeKittyControlSequence(_ sequence: String, to fd: Int32) {
+        guard isatty(fd) == 1 else { return }
+        _ = writeToFileDescriptor(fd, sequence)
     }
 
     deinit {
