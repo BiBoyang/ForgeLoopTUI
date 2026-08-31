@@ -44,7 +44,7 @@ Default values:
 - `maxRenderedWidth = 80`
 - `minColumnWidth = 6`
 - `maxColumnWidth = 24`
-- `truncationIndicator = "…"`
+- `truncationIndicator = "..."` (width-deterministic ASCII: the indicator sits flush against a column's right border, and East-Asian-Ambiguous glyphs like "…" render double-width in some terminal/font configurations, which would push that row's border one cell out; pass `truncationIndicator: "…"` explicitly only for terminals known to render ambiguous characters single-width)
 - `overflowBehavior = .compactThenTruncateThenDegrade`
 
 This keeps the default conservative while allowing typical two-column documentation tables to remain structured in terminal output.
