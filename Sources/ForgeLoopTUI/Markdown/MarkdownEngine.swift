@@ -828,14 +828,20 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         guard !trimmed.isEmpty else { return nil }
 
         let totalIndentationLevel = indentationLevel + indentationUnits(in: leadingWhitespace)
-        let normalizedIndent = String(repeating: "  ", count: totalIndentationLevel)
         let body = String(trimmed)
 
         if let heading = renderHeading(body) {
             return rawIndentPrefix + leadingWhitespace + heading
         }
         if let listItem = renderListItem(body, nestingLevel: totalIndentationLevel) {
-            return normalizedIndent + listItem
+            // 列表缩进保留源码原始宽度（tab 按 4 折算成空格），不再统一压成
+            // 每级两格：有序父条目（"1. " 宽 3）下的嵌套列表按惯例缩进 3 格，
+            // 压成 2 格会让子条目比父条目正文还靠左，视觉上不成嵌套。
+            // 偶数缩进与旧的归一化结果一致、行为不变；bullet 词汇仍按
+            // totalIndentationLevel 选取，不受影响。
+            let rawWidth = indentationWidth(in: rawIndentPrefix)
+                + indentationWidth(in: leadingWhitespace)
+            return String(repeating: " ", count: rawWidth) + listItem
         }
         if isThematicBreak(body) {
             return rawIndentPrefix + leadingWhitespace + thematicBreak
@@ -930,11 +936,15 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         return bullets[index]
     }
 
-    private func indentationUnits(in whitespace: String) -> Int {
-        let width = whitespace.reduce(into: 0) { partialResult, character in
+    /// 缩进空白串的显示宽度（tab 按 4 列计）。
+    private func indentationWidth(in whitespace: String) -> Int {
+        whitespace.reduce(into: 0) { partialResult, character in
             partialResult += character == "\t" ? 4 : 1
         }
-        return max(0, width / 2)
+    }
+
+    private func indentationUnits(in whitespace: String) -> Int {
+        max(0, indentationWidth(in: whitespace) / 2)
     }
 
     private func isIndentationCharacter(_ character: Character) -> Bool {

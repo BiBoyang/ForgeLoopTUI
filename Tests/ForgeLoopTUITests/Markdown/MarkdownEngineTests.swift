@@ -295,6 +295,99 @@ final class MarkdownEngineTests: XCTestCase {
         ])
     }
 
+    // MARK: - Nested list indentation (TASK-34)
+
+    /// 症状回归：有序条目（"1. " 宽 3）下的嵌套 bullet 曾按每级两格归一化
+    /// 压到 2 格，比父条目正文（缩进 3）还靠左。修复后保留源码原始缩进。
+    func testNestedListUnderOrderedItemKeepsParentContentIndent() {
+        let engine = plainEngine()
+        let text = """
+        1. 把 query 改成 context vector
+           不是只 embed 用户最后一句
+           - 当前目标
+        """
+
+        let lines = engine.render(text: text, isFinal: true)
+        XCTAssertEqual(lines, [
+            "1. 把 query 改成 context vector",
+            "   不是只 embed 用户最后一句",
+            "   ◦ 当前目标",
+        ])
+    }
+
+    /// 三级混合嵌套：缩进逐级跟随源码原始宽度（3 → 5），子级不窄于父级
+    /// 内容列；bullet 词汇仍按层级选取（◦ → 二级）。
+    func testThreeLevelMixedListKeepsRawNestingIndent() {
+        let engine = plainEngine()
+        let text = """
+        1. top
+           - second
+             1. third
+        """
+
+        let lines = engine.render(text: text, isFinal: true)
+        XCTAssertEqual(lines, [
+            "1. top",
+            "   ◦ second",
+            "     1. third",
+        ])
+    }
+
+    /// 偶数缩进风格（每级 2 格）钉住不变：与归一化结果一致。
+    func testTwoSpaceNestingStyleIsPreserved() {
+        let engine = plainEngine()
+        let text = """
+        - outer
+          - inner
+            - deep
+        """
+
+        let lines = engine.render(text: text, isFinal: true)
+        XCTAssertEqual(lines, [
+            "• outer",
+            "  ◦ inner",
+            "    ▪ deep",
+        ])
+    }
+
+    /// 双位数字有序父条目（"10. " 宽 4）下的嵌套 bullet 对齐内容列 4。
+    /// （bullet 词汇按缩进层级选取，4 格 = level 2 → ▪，非本任务改动范围。）
+    func testNestedListUnderDoubleDigitOrderedItemAlignsToContentColumn() {
+        let engine = plainEngine()
+        let text = """
+        10. item
+            - child
+        """
+
+        let lines = engine.render(text: text, isFinal: true)
+        XCTAssertEqual(lines, [
+            "10. item",
+            "    ▪ child",
+        ])
+    }
+
+    /// 流式逐帧渲染与一次性渲染逐行一致：列表渲染仍是单行纯函数，
+    /// stable-prefix 已提交行不因后续帧而改变。
+    func testNestedListStreamingFramesMatchOneShotRender() {
+        let frames = [
+            "1. top\n",
+            "1. top\n   - second\n",
+            "1. top\n   - second\n     1. third\n",
+        ]
+        let engine = plainEngine()
+        for frame in frames {
+            XCTAssertEqual(
+                engine.render(text: frame, isFinal: false),
+                plainEngine().render(text: frame, isFinal: false)
+            )
+        }
+        let full = frames.last!
+        XCTAssertEqual(
+            engine.render(text: full, isFinal: true),
+            plainEngine().render(text: full, isFinal: true)
+        )
+    }
+
     func testStreamingEngineParsesEscapedPipeInCells() {
         let engine = StreamingMarkdownEngine()
         let text = """
