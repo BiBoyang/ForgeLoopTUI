@@ -1140,11 +1140,16 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
 
     private func renderTable(header: [String], alignment: [CellAlign], rows: [[String]]) -> [String]? {
         let normalizedRows = rows.map { normalize(cells: $0, count: header.count) }
+        // Cells carry inline markdown (`**bold**`, `` `code` ``, links): format
+        // before any width math so `visibleWidth` (ANSI/OSC-aware) measures the
+        // visible text and the markers never reach the terminal literally.
+        let formattedHeader = header.map { applyInlineFormatting($0) }
+        let formattedRows = normalizedRows.map { $0.map { applyInlineFormatting($0) } }
         var widths = Array(repeating: 0, count: header.count)
 
         for col in 0..<header.count {
-            widths[col] = max(widths[col], visibleWidth(header[col]))
-            for row in normalizedRows {
+            widths[col] = max(widths[col], visibleWidth(formattedHeader[col]))
+            for row in formattedRows {
                 widths[col] = max(widths[col], visibleWidth(row[col]))
             }
             widths[col] = max(widths[col], 1)
@@ -1162,8 +1167,8 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
            shouldDegradeForReadability(
                idealWidths: widths,
                resolvedWidths: resolvedWidths,
-               header: header,
-               rows: normalizedRows,
+               header: formattedHeader,
+               rows: formattedRows,
                policy: options.tablePolicy
            ) {
             return nil
@@ -1173,14 +1178,14 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         let border = theme.tableBorder
         output.append(border.applied(to: borderLine(left: "┌", middle: "┬", right: "┐", widths: resolvedWidths)))
         output.append(tableRow(
-            cells: header,
+            cells: formattedHeader,
             aligns: alignment,
             widths: resolvedWidths,
             policy: options.tablePolicy,
             cellStyle: theme.tableHeader
         ))
         output.append(border.applied(to: borderLine(left: "├", middle: "┼", right: "┤", widths: resolvedWidths)))
-        for row in normalizedRows {
+        for row in formattedRows {
             output.append(tableRow(cells: row, aligns: alignment, widths: resolvedWidths, policy: options.tablePolicy))
         }
         output.append(border.applied(to: borderLine(left: "└", middle: "┴", right: "┘", widths: resolvedWidths)))
@@ -1290,24 +1295,73 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         }
 
         let prefixWidth = maxWidth - indicatorWidth
-        return fittingPrefix(of: value, maxWidth: prefixWidth) + indicator
+        let prefix = fittingPrefix(of: value, maxWidth: prefixWidth)
+        // A cut styled span loses its closing SGR: append a reset so the
+        // indicator and following cells don't inherit the leaked style.
+        if prefix.contains("\u{1B}") {
+            return prefix + "\u{1B}[0m" + indicator
+        }
+        return prefix + indicator
     }
 
     private func fittingPrefix(of value: String, maxWidth: Int) -> String {
         guard maxWidth > 0 else { return "" }
         var result = ""
         var currentWidth = 0
+        var index = value.startIndex
 
-        for character in value {
+        while index < value.endIndex {
+            // Copy ANSI escape sequences whole and uncounted — cutting one
+            // would garble output or leak styling (cell text reaches here
+            // already inline-formatted).
+            if value[index] == "\u{1B}" {
+                let sequenceEnd = escapeSequenceEnd(in: value, at: index)
+                result.append(contentsOf: value[index..<sequenceEnd])
+                index = sequenceEnd
+                continue
+            }
+            let character = value[index]
             let characterWidth = visibleWidth(String(character))
             if currentWidth + characterWidth > maxWidth {
                 break
             }
             result.append(character)
             currentWidth += characterWidth
+            index = value.index(after: index)
         }
-
         return result
+    }
+
+    /// End index of the ANSI escape sequence starting at `start` (which must
+    /// point at ESC): CSI runs to its final byte (0x40–0x7E), OSC to BEL or
+    /// ST, anything else is treated as a two-character sequence.
+    private func escapeSequenceEnd(in text: String, at start: String.Index) -> String.Index {
+        var index = text.index(after: start)
+        guard index < text.endIndex else { return index }
+        switch text[index] {
+        case "[":
+            index = text.index(after: index)
+            while index < text.endIndex {
+                let ch = text[index]
+                index = text.index(after: index)
+                if let ascii = ch.asciiValue, (0x40...0x7E).contains(ascii) { return index }
+            }
+            return index
+        case "]":
+            index = text.index(after: index)
+            while index < text.endIndex {
+                let ch = text[index]
+                if ch == "\u{7}" { return text.index(after: index) }
+                if ch == "\u{1B}" {
+                    let next = text.index(after: index)
+                    if next < text.endIndex, text[next] == "\\" { return text.index(after: next) }
+                }
+                index = text.index(after: index)
+            }
+            return index
+        default:
+            return text.index(after: index)
+        }
     }
 }
 

@@ -796,4 +796,44 @@ final class TranscriptRendererMarkdownTests: XCTestCase {
         XCTAssertTrue(lines.contains(where: { $0.contains("...") }))
         XCTAssertFalse(lines.contains(where: { $0.contains("path to data files to supply the data that will be passed into templates") }))
     }
+
+    // MARK: Table cells inline formatting
+
+    func testStreamingEngineAppliesInlineFormattingInsideTableCells() {
+        let engine = StreamingMarkdownEngine(options: MarkdownRenderOptions(theme: .none))
+        let text = """
+        | 服务 | 低谷时段 |
+        | --- | --- |
+        | **DeepSeek** | 00:30 – 08:30 |
+        | `Kimi` | 23:00 – 09:00 |
+        """
+
+        let lines = engine.render(text: text, isFinal: true)
+        let rowLines = lines.filter { $0.contains("│") }
+        XCTAssertFalse(rowLines.isEmpty)
+        // Markers are consumed, never rendered literally.
+        XCTAssertFalse(rowLines.contains(where: { $0.contains("**") || $0.contains("`") }))
+        // Bold SGR wraps exactly the cell text.
+        XCTAssertTrue(lines.contains(where: { $0.contains("\u{1B}[1mDeepSeek\u{1B}[0m") }))
+        // Width math used the visible text: every row renders at one width.
+        XCTAssertEqual(Set(rowLines.map { visibleWidth($0) }).count, 1)
+    }
+
+    func testStreamingEngineTruncatesStyledTableCellWithoutSplittingEscapeSequences() {
+        let engine = StreamingMarkdownEngine(options: MarkdownRenderOptions(theme: .none))
+        let wideBold = "**" + String(repeating: "x", count: 300) + "**"
+        let text = """
+        | col | detail |
+        | --- | --- |
+        | ok | \(wideBold) |
+        """
+
+        let lines = engine.render(text: text, isFinal: true)
+        XCTAssertTrue(lines.contains(where: { $0.contains("…") }))
+        let rowLines = lines.filter { $0.contains("│") }
+        XCTAssertEqual(Set(rowLines.map { visibleWidth($0) }).count, 1)
+        if let cut = rowLines.first(where: { $0.contains("…") && $0.contains("\u{1B}[1m") }) {
+            XCTAssertTrue(cut.contains("\u{1B}[0m"), "a cut bold span must be closed with a reset")
+        }
+    }
 }
