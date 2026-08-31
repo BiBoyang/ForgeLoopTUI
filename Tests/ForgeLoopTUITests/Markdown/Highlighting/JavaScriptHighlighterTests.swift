@@ -281,11 +281,11 @@ final class JavaScriptHighlighterTests: XCTestCase {
         XCTAssertEqual(
             render(text),
             [
-                "\(esc)[2m┌─ code\(esc)[0m \(esc)[2;3mjavascript\(esc)[0m",
+                "\(esc)[2m┌─\(esc)[0m \(esc)[2;3mjavascript\(esc)[0m",
                 "│ \(esc)[33mconst\(esc)[0m add = (a, b) => {",
                 "│   \(esc)[33mreturn\(esc)[0m a + b; \(esc)[2m// sum\(esc)[0m",
                 "│ };",
-                "\(esc)[2m└─ end code\(esc)[0m",
+                "\(esc)[2m└─\(esc)[0m",
             ]
         )
     }
@@ -294,9 +294,9 @@ final class JavaScriptHighlighterTests: XCTestCase {
         XCTAssertEqual(
             render("```js\nreturn 1\n```"),
             [
-                "\(esc)[2m┌─ code\(esc)[0m \(esc)[2;3mjs\(esc)[0m",
+                "\(esc)[2m┌─\(esc)[0m \(esc)[2;3mjs\(esc)[0m",
                 "│ \(esc)[33mreturn\(esc)[0m \(esc)[36m1\(esc)[0m",
-                "\(esc)[2m└─ end code\(esc)[0m",
+                "\(esc)[2m└─\(esc)[0m",
             ]
         )
         XCTAssertEqual(
@@ -310,11 +310,11 @@ final class JavaScriptHighlighterTests: XCTestCase {
         XCTAssertEqual(
             render(text, options: .init(theme: .none)),
             [
-                "┌─ code javascript",
+                "┌─ javascript",
                 "│ const add = (a, b) => {",
                 "│   return a + b; // sum",
                 "│ };",
-                "└─ end code",
+                "└─",
             ]
         )
     }
@@ -326,9 +326,9 @@ final class JavaScriptHighlighterTests: XCTestCase {
         XCTAssertEqual(
             render(text),
             [
-                "\(esc)[2m┌─ code\(esc)[0m \(esc)[2;3mtypescript\(esc)[0m",
+                "\(esc)[2m┌─\(esc)[0m \(esc)[2;3mtypescript\(esc)[0m",
                 "│ const x: number = 1;",
-                "\(esc)[2m└─ end code\(esc)[0m",
+                "\(esc)[2m└─\(esc)[0m",
             ]
         )
     }

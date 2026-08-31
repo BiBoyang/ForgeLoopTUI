@@ -231,10 +231,10 @@ final class PythonHighlighterTests: XCTestCase {
         XCTAssertEqual(
             render(text),
             [
-                "\(esc)[2m┌─ code\(esc)[0m \(esc)[2;3mpython\(esc)[0m",
+                "\(esc)[2m┌─\(esc)[0m \(esc)[2;3mpython\(esc)[0m",
                 "│ \(esc)[33mdef\(esc)[0m f():",
                 "│     \(esc)[33mreturn\(esc)[0m \(esc)[32m\"hi\"\(esc)[0m  \(esc)[2m# 42\(esc)[0m",
-                "\(esc)[2m└─ end code\(esc)[0m",
+                "\(esc)[2m└─\(esc)[0m",
             ]
         )
     }
@@ -243,9 +243,9 @@ final class PythonHighlighterTests: XCTestCase {
         XCTAssertEqual(
             render("```py\nreturn 1\n```"),
             [
-                "\(esc)[2m┌─ code\(esc)[0m \(esc)[2;3mpy\(esc)[0m",
+                "\(esc)[2m┌─\(esc)[0m \(esc)[2;3mpy\(esc)[0m",
                 "│ \(esc)[33mreturn\(esc)[0m \(esc)[36m1\(esc)[0m",
-                "\(esc)[2m└─ end code\(esc)[0m",
+                "\(esc)[2m└─\(esc)[0m",
             ]
         )
         XCTAssertEqual(
@@ -259,10 +259,10 @@ final class PythonHighlighterTests: XCTestCase {
         XCTAssertEqual(
             render(text, options: .init(theme: .none)),
             [
-                "┌─ code python",
+                "┌─ python",
                 "│ def f():",
                 "│     return \"hi\"  # 42",
-                "└─ end code",
+                "└─",
             ]
         )
     }
@@ -272,18 +272,18 @@ final class PythonHighlighterTests: XCTestCase {
         XCTAssertEqual(
             render(text),
             [
-                "\(esc)[2m┌─ code\(esc)[0m \(esc)[2;3mruby\(esc)[0m",
+                "\(esc)[2m┌─\(esc)[0m \(esc)[2;3mruby\(esc)[0m",
                 "│ puts \"hi\"  # x",
-                "\(esc)[2m└─ end code\(esc)[0m",
+                "\(esc)[2m└─\(esc)[0m",
             ]
         )
         // No info string: no highlighter either, even for Python-looking code.
         XCTAssertEqual(
             render("```\nreturn 1\n```"),
             [
-                "\(esc)[2m┌─ code\(esc)[0m",
+                "\(esc)[2m┌─\(esc)[0m",
                 "│ return 1",
-                "\(esc)[2m└─ end code\(esc)[0m",
+                "\(esc)[2m└─\(esc)[0m",
             ]
         )
     }
