@@ -192,15 +192,14 @@ struct KeyParserTests {
 
     @Test("Ctrl+A through Ctrl+Z")
     func testCtrlAZ() {
-        // 0x09 (Tab), 0x0A (LF/Enter), 0x0D (CR/Enter) 是特殊控制字符，
-        // 被优先映射为 Tab/Enter 而不是 Ctrl+I/J/M。
+        // 0x09 (Tab) 和 0x0D (CR/Enter) 是特殊控制字符，被优先映射为
+        // Tab/Enter 而不是 Ctrl+I/M；0x0A (LF) 即 Ctrl+J，按 Ctrl 字母解码。
         var events: [KeyEvent] = []
         var expected: [KeyEvent] = []
         for v in 0x01...0x1A {
             events.append(contentsOf: parser.parse([.character(Character(Unicode.Scalar(v)!))]))
             switch v {
             case 0x09: expected.append(KeyEvent(key: .tab))
-            case 0x0A: expected.append(KeyEvent(key: .enter))
             case 0x0D: expected.append(KeyEvent(key: .enter))
             default:
                 expected.append(KeyEvent(
@@ -222,17 +221,31 @@ struct KeyParserTests {
     func testSpecialCharacters() {
         let events = parser.parse([
             .character("\r"),
-            .character("\n"),
             .character("\t"),
             .character("\u{7F}"),
             .character("\u{1B}"),
         ])
         #expect(events == [
             KeyEvent(key: .enter),
-            KeyEvent(key: .enter),
             KeyEvent(key: .tab),
             KeyEvent(key: .backspace),
             KeyEvent(key: .escape),
+        ])
+    }
+
+    @Test("LF (0x0A) decodes as Ctrl+J; only CR (0x0D) is Enter")
+    func testLineFeedIsCtrlJ() {
+        let events = parser.parse([
+            .character("\n"),
+            .byte(0x0A),
+            .character("\r"),
+            .byte(0x0D),
+        ])
+        #expect(events == [
+            KeyEvent(key: .character("J"), modifiers: .ctrl),
+            KeyEvent(key: .character("J"), modifiers: .ctrl),
+            KeyEvent(key: .enter),
+            KeyEvent(key: .enter),
         ])
     }
 

@@ -138,7 +138,9 @@ public struct AppKitEventAdapter: Sendable {
 
     /// 将可打印字符映射为 KeyEvent。
     ///
-    /// 控制字符按 KeyParser.parseCharacter(_:) 语义对齐：
+    /// 控制字符与 KeyParser.parseCharacter(_:) 语义对齐，唯一例外是
+    /// 0x0A：NSEvent 的 LF（SpecialKey lineFeed / Ctrl+J 场景）自带修饰位，
+    /// 桥接层保持 enter 语义；终端字节流中的 0x0A 由 KeyParser 解码为 ctrl+j。
     /// - 0x0D / 0x0A → .enter
     /// - 0x09 → .tab
     /// - 0x7F → .backspace

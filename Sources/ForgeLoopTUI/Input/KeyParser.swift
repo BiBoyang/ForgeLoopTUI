@@ -65,7 +65,7 @@ public struct KeyParser: Sendable {
         let value = scalar.value
 
         switch value {
-        case 0x0D, 0x0A:
+        case 0x0D:
             return KeyEvent(key: .enter)
         case 0x09:
             return KeyEvent(key: .tab)
@@ -77,6 +77,7 @@ public struct KeyParser: Sendable {
             return KeyEvent(key: .character("@"), modifiers: .ctrl)
         case 0x01...0x1A:
             // 0x01...0x1A + 0x40 = A...Z；UInt8 构造 scalar 非可选。
+            // 0x0A 落在这里：LF 即 Ctrl+J（0x0A + 0x40 = 'J'），不再映射为 enter。
             let letter = Character(Unicode.Scalar(UInt8(value + 0x40)))
             return KeyEvent(key: .character(letter), modifiers: .ctrl)
         default:
@@ -87,7 +88,7 @@ public struct KeyParser: Sendable {
     /// 解析原始字节（flush 兜底或非法字节）。
     private func parseByte(_ b: UInt8) -> KeyEvent {
         switch b {
-        case 0x0D, 0x0A:
+        case 0x0D:
             return KeyEvent(key: .enter)
         case 0x09:
             return KeyEvent(key: .tab)
@@ -98,6 +99,7 @@ public struct KeyParser: Sendable {
         case 0x00:
             return KeyEvent(key: .character("@"), modifiers: .ctrl)
         case 0x01...0x1A:
+            // 与 parseCharacter 一致：0x0A 为 Ctrl+J（'J'），不再映射为 enter。
             let letter = Character(Unicode.Scalar(b + 0x40))
             return KeyEvent(key: .character(letter), modifiers: .ctrl)
         default:
