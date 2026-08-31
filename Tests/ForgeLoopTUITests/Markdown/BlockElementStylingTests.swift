@@ -89,9 +89,9 @@ final class BlockElementStylingTests: XCTestCase {
         XCTAssertEqual(
             render("```\nhttps://example.com\n```"),
             [
-                "\(esc)[2m┌─ code\(esc)[0m",
+                "\(esc)[2m┌─\(esc)[0m",
                 "│ https://example.com",
-                "\(esc)[2m└─ end code\(esc)[0m",
+                "\(esc)[2m└─\(esc)[0m",
             ]
         )
     }
@@ -131,18 +131,18 @@ final class BlockElementStylingTests: XCTestCase {
         XCTAssertEqual(
             render("```swift\nlet x = 1\n```"),
             [
-                "\(esc)[2m┌─ code\(esc)[0m \(esc)[2;3mswift\(esc)[0m",
+                "\(esc)[2m┌─\(esc)[0m \(esc)[2;3mswift\(esc)[0m",
                 "│ let x = 1",
-                "\(esc)[2m└─ end code\(esc)[0m",
+                "\(esc)[2m└─\(esc)[0m",
             ]
         )
         // No language label: border only.
         XCTAssertEqual(
             render("```\ntilde\n```"),
             [
-                "\(esc)[2m┌─ code\(esc)[0m",
+                "\(esc)[2m┌─\(esc)[0m",
                 "│ tilde",
-                "\(esc)[2m└─ end code\(esc)[0m",
+                "\(esc)[2m└─\(esc)[0m",
             ]
         )
     }

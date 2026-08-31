@@ -132,9 +132,9 @@ final class LaTeXApproximatorTests: XCTestCase {
         XCTAssertEqual(
             render("```latex\n$x^2$ and $y_1$\n```"),
             [
-                "\u{1B}[2m┌─ code\u{1B}[0m \u{1B}[2;3mlatex\u{1B}[0m",
+                "\u{1B}[2m┌─\u{1B}[0m \u{1B}[2;3mlatex\u{1B}[0m",
                 "│ $x^2$ and $y_1$",
-                "\u{1B}[2m└─ end code\u{1B}[0m",
+                "\u{1B}[2m└─\u{1B}[0m",
             ]
         )
     }

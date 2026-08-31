@@ -175,9 +175,9 @@ final class HTMLDegraderTests: XCTestCase {
         ```
         """)
         XCTAssertEqual(rendered, [
-            "\u{1B}[2m┌─ code\u{1B}[0m \u{1B}[2;3mhtml\u{1B}[0m",
+            "\u{1B}[2m┌─\u{1B}[0m \u{1B}[2;3mhtml\u{1B}[0m",
             "│ <div class=\"raw\">&amp; stays</div>",
-            "\u{1B}[2m└─ end code\u{1B}[0m",
+            "\u{1B}[2m└─\u{1B}[0m",
         ])
     }
 

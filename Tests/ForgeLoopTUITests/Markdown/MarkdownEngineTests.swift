@@ -153,11 +153,11 @@ final class MarkdownEngineTests: XCTestCase {
 
         let lines = engine.render(text: text, isFinal: true)
         XCTAssertEqual(lines, [
-            "┌─ code markdown",
+            "┌─ markdown",
             "│ | a | b |",
             "│ | --- | --- |",
             "│ | 1 | 2 |",
-            "└─ end code",
+            "└─",
         ])
         XCTAssertFalse(lines.contains(where: { $0.contains("│ a │") || $0.contains("┌──") }))
     }
@@ -171,9 +171,9 @@ final class MarkdownEngineTests: XCTestCase {
         """
         let lines = engine.render(text: text, isFinal: true)
         XCTAssertEqual(lines, [
-            "┌─ code swift",
+            "┌─ swift",
             "│ let x = 1",
-            "└─ end code",
+            "└─",
         ])
     }
 
@@ -186,10 +186,61 @@ final class MarkdownEngineTests: XCTestCase {
         """
         let lines = engine.render(text: text, isFinal: true)
         XCTAssertEqual(lines, [
-            "┌─ code",
+            "┌─",
             "│ tilde fence",
-            "└─ end code",
+            "└─",
         ])
+    }
+
+    // MARK: - Code fence chrome labels (TASK-33)
+
+    /// 无语言 fence 的 chrome 是纯边框：开栏 `┌─` 不带兜底 "code" 标签，
+    /// 闭栏 `└─` 永远不带 "end …" 字样。
+    func testCodeFenceWithoutLanguageRendersBareBorder() {
+        let engine = plainEngine()
+        let text = """
+        ```
+        plain text
+        ```
+        """
+        let lines = engine.render(text: text, isFinal: true)
+        XCTAssertEqual(lines, [
+            "┌─",
+            "│ plain text",
+            "└─",
+        ])
+    }
+
+    /// 有语言 fence 的标签位只放语言本身（`┌─ python`），
+    /// 不再拼静态 "code" 字样。
+    func testCodeFenceWithLanguageShowsLanguageLabelOnly() {
+        let engine = plainEngine()
+        let text = """
+        ```python
+        print("hi")
+        ```
+        """
+        let lines = engine.render(text: text, isFinal: true)
+        XCTAssertEqual(lines, [
+            "┌─ python",
+            #"│ print("hi")"#,
+            "└─",
+        ])
+    }
+
+    /// 流式中间态（fence 未闭合）同样不泄漏：无语言首帧起就是裸 `┌─`，
+    /// 有语言是 `┌─ <lang>`；任何帧都不出现 "code" 兜底标签或
+    /// "end …" 闭栏字样，闭合后收敛为纯边框。
+    func testStreamingUnclosedCodeFenceNeverLeaksPlaceholderLabels() {
+        let noLanguage = plainEngine()
+        let frame1 = "```\nalpha\n"
+        XCTAssertEqual(noLanguage.render(text: frame1, isFinal: false), ["┌─", "│ alpha", "│"])
+        let frame2 = frame1 + "beta\n```\n"
+        XCTAssertEqual(noLanguage.render(text: frame2, isFinal: true), ["┌─", "│ alpha", "│ beta", "└─", ""])
+
+        let withLanguage = plainEngine()
+        let partial = "```swift\nlet x = 1\n"
+        XCTAssertEqual(withLanguage.render(text: partial, isFinal: false), ["┌─ swift", "│ let x = 1", "│"])
     }
 
     func testStreamingEngineFormatsHeadingsQuotesListsAndCodeBlocks() {
@@ -216,9 +267,9 @@ final class MarkdownEngineTests: XCTestCase {
             "  ◦ nested",
             "1. first",
             "────────────────────────",
-            "┌─ code swift",
+            "┌─ swift",
             "│ let answer = 42",
-            "└─ end code",
+            "└─",
         ])
     }
 
@@ -606,7 +657,7 @@ final class MarkdownEngineTests: XCTestCase {
 
     /// 稳定边界落在未闭合代码块中间时，分段渲染（stable + live）的最终输出
     /// 必须与一次性 renderFully 全文的输出一致。修复前：闭合 ``` 在 live 片段里
-    /// 被误判为新 fence 的开始，出现第二个 "┌─ code"。
+    /// 被误判为新 fence 的开始，出现第二个 "┌─ swift"。
     func testStreamingCodeFenceRetreatMatchesOneShotFinalRender() {
         let engine = plainEngine()
         let frame1 = "```swift\nlet x = 1\n"
@@ -628,8 +679,8 @@ final class MarkdownEngineTests: XCTestCase {
             finalLines,
             plainEngine().render(text: frame3, isFinal: true)
         )
-        XCTAssertEqual(finalLines.filter { $0.hasPrefix("┌─ code") }.count, 1)
-        XCTAssertEqual(finalLines.filter { $0 == "└─ end code" }.count, 1)
+        XCTAssertEqual(finalLines.filter { $0.hasPrefix("┌─") }.count, 1)
+        XCTAssertEqual(finalLines.filter { $0 == "└─" }.count, 1)
         XCTAssertTrue(finalLines.contains("│ let y = 2"))
     }
 
@@ -640,7 +691,7 @@ final class MarkdownEngineTests: XCTestCase {
         let frame1 = "```\nalpha\nbeta\n"
         XCTAssertEqual(
             engine.render(text: frame1, isFinal: false),
-            ["┌─ code", "│ alpha", "│ beta", "│"]
+            ["┌─", "│ alpha", "│ beta", "│"]
         )
 
         let frame2 = frame1 + "gamma\n```\n"
@@ -649,7 +700,7 @@ final class MarkdownEngineTests: XCTestCase {
             finalLines,
             plainEngine().render(text: frame2, isFinal: true)
         )
-        XCTAssertEqual(finalLines.filter { $0.hasPrefix("┌─ code") }.count, 1)
+        XCTAssertEqual(finalLines.filter { $0.hasPrefix("┌─") }.count, 1)
         XCTAssertTrue(finalLines.contains("│ gamma"))
     }
 
@@ -670,7 +721,7 @@ final class MarkdownEngineTests: XCTestCase {
             plainEngine().render(text: frame2, isFinal: true)
         )
         XCTAssertEqual(finalLines.first, "intro")
-        XCTAssertEqual(finalLines.filter { $0.hasPrefix("┌─ code") }.count, 1)
+        XCTAssertEqual(finalLines.filter { $0.hasPrefix("┌─") }.count, 1)
         XCTAssertTrue(finalLines.contains("│ code2"))
     }
 
@@ -686,8 +737,8 @@ final class MarkdownEngineTests: XCTestCase {
             finalLines,
             plainEngine().render(text: frame2, isFinal: true)
         )
-        XCTAssertEqual(finalLines.filter { $0.hasPrefix("┌─ code") }.count, 2)
-        XCTAssertEqual(finalLines.filter { $0 == "└─ end code" }.count, 2)
+        XCTAssertEqual(finalLines.filter { $0.hasPrefix("┌─") }.count, 2)
+        XCTAssertEqual(finalLines.filter { $0 == "└─" }.count, 2)
         XCTAssertTrue(finalLines.contains("│ c"))
     }
 
@@ -707,11 +758,11 @@ final class MarkdownEngineTests: XCTestCase {
         let frame3 = frame2 + "```\n"
         let finalLines = engine.render(text: frame3, isFinal: true)
         XCTAssertEqual(finalLines, [
-            "┌─ code markdown",
+            "┌─ markdown",
             "│ | a | b |",
             "│ | --- | --- |",
             "│ | 1 | 2 |",
-            "└─ end code",
+            "└─",
             "",
         ])
     }
@@ -721,7 +772,7 @@ final class MarkdownEngineTests: XCTestCase {
     func testFinalRenderOfUnclosedCodeFenceIsUnchanged() {
         let engine = plainEngine()
         let lines = engine.render(text: "```swift\nlet x = 1\n", isFinal: true)
-        XCTAssertEqual(lines, ["┌─ code swift", "│ let x = 1", "│"])
+        XCTAssertEqual(lines, ["┌─ swift", "│ let x = 1", "│"])
     }
 
     // MARK: - Stable prefix cap (C4)

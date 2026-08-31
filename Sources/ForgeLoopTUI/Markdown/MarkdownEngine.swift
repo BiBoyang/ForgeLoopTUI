@@ -956,15 +956,18 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         return String(trimmed.drop(while: { $0 == "`" || $0 == "~" })).trimmingCharacters(in: .whitespaces)
     }
 
+    /// Fence chrome is a bare border: no "code" fallback label when the info
+    /// string is empty, and the closing border never carries an "end …" tag.
+    /// The label slot holds the language and nothing else.
     private func renderCodeFenceStart(_ line: String) -> String {
         let language = codeFenceLanguage(line)
-        let border = theme.fenceBorder.applied(to: "┌─ code")
+        let border = theme.fenceBorder.applied(to: "┌─")
         guard !language.isEmpty else { return border }
         return border + " " + theme.fenceLanguageLabel.applied(to: language)
     }
 
     private func renderCodeFenceEnd() -> String {
-        theme.fenceBorder.applied(to: "└─ end code")
+        theme.fenceBorder.applied(to: "└─")
     }
 
     /// Renders one fence content line. The `│` gutter stays unstyled; with a
