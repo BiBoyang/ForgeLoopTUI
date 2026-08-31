@@ -355,6 +355,11 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         var rendered: [String] = []
         var index = 0
         var inCodeFence = false
+        // 当前 fence 的高亮器：fence 开始按 info string 创建、闭合时释放。
+        // stableAdvance 的 fence retreat 保证 fence 永不跨 render 批次被切开
+        // （未闭合 fence 整体留在 unstable 区、每趟从其首行重渲），因此跨行
+        // 高亮状态只是本趟渲染的局部变量，渲染仍是输入文本的确定函数。
+        var fenceHighlighter: FenceHighlighter?
         // Multi-line HTML tag state: lines between an unclosed `<tag …` and
         // its closing `>` are attribute text (dropped). `stableAdvance`
         // retreats so a multi-line tag always renders within one pass; if it
@@ -387,17 +392,22 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
                 if isCodeFenceDelimiter(lines[index]) {
                     if inCodeFence {
                         inCodeFence = false
+                        fenceHighlighter = nil
                         rendered.append(renderCodeFenceEnd())
                     } else {
                         inCodeFence = true
                         rendered.append(renderCodeFenceStart(lines[index]))
+                        fenceHighlighter = FenceHighlighter(
+                            infoString: codeFenceLanguage(lines[index]),
+                            styles: theme.code
+                        )
                     }
                     index += 1
                     continue
                 }
 
                 if inCodeFence {
-                    rendered.append(renderCodeFenceContent(lines[index]))
+                    rendered.append(renderCodeFenceContent(lines[index], highlighter: fenceHighlighter))
                     index += 1
                     continue
                 }
@@ -882,9 +892,15 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         return character == "-" || character == "*" || character == "_"
     }
 
-    private func renderCodeFenceStart(_ line: String) -> String {
+    /// The fence info string: the delimiter line minus its backtick/tilde
+    /// run, trimmed. Shared by the border label and highlighter selection.
+    private func codeFenceLanguage(_ line: String) -> String {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
-        let language = trimmed.drop(while: { $0 == "`" || $0 == "~" }).trimmingCharacters(in: .whitespaces)
+        return String(trimmed.drop(while: { $0 == "`" || $0 == "~" })).trimmingCharacters(in: .whitespaces)
+    }
+
+    private func renderCodeFenceStart(_ line: String) -> String {
+        let language = codeFenceLanguage(line)
         let border = theme.fenceBorder.applied(to: "┌─ code")
         guard !language.isEmpty else { return border }
         return border + " " + theme.fenceLanguageLabel.applied(to: language)
@@ -894,8 +910,18 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         theme.fenceBorder.applied(to: "└─ end code")
     }
 
-    private func renderCodeFenceContent(_ line: String) -> String {
-        line.isEmpty ? "│" : "│ \(line)"
+    /// Renders one fence content line. The `│` gutter stays unstyled; with a
+    /// recognized language the body is syntax-highlighted from `theme.code`,
+    /// otherwise it passes through as plain text. Highlighting only wraps
+    /// whole segments in complete SGR sequences and segments partition the
+    /// line, so a `.none` theme emits the pre-highlight byte stream exactly.
+    private func renderCodeFenceContent(_ line: String, highlighter: FenceHighlighter?) -> String {
+        guard !line.isEmpty else { return "│" }
+        guard let highlighter else { return "│ \(line)" }
+        let body = highlighter.highlight(line: line)
+            .map { $0.style.applied(to: $0.text) }
+            .joined()
+        return "│ \(body)"
     }
 
     private func splitRowCells(_ body: String) -> [String] {
