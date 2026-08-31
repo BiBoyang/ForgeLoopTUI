@@ -7,12 +7,15 @@ import Darwin
 ///
 /// `enter()` also pushes the kitty keyboard progressive-enhancement flag
 /// `disambiguate escape codes` (`ESC[>1u`) so modified Enter (e.g.
-/// Shift+Enter) arrives as a CSI-u sequence; `restore()` pops it (`ESC[<u`)
-/// on every exit path (`stop()`, `withRawTTY` defer, `deinit`). The
-/// sequences go to stdout — the channel `StdoutTerminal` already uses — not
-/// to the input fd: writing them to the input fd would make a later
+/// Shift+Enter) arrives as a CSI-u sequence, and enables bracketed paste
+/// mode (`ESC[?2004h`) so terminals wrap pasted text in `ESC[200~` …
+/// `ESC[201~` markers that `InputPipeline` aggregates into one `.paste`
+/// event; `restore()` reverts both (`ESC[<u`, `ESC[?2004l`) on every exit
+/// path (`stop()`, `withRawTTY` defer, `deinit`). The sequences go to
+/// stdout — the channel `StdoutTerminal` already uses — not to the input
+/// fd: writing them to the input fd would make a later
 /// `tcsetattr(TCSAFLUSH)` block until the output queue drains. Terminals
-/// without kitty support absorb both sequences silently.
+/// without kitty or bracketed-paste support absorb the sequences silently.
 ///
 /// Usage (RAII style):
 /// ```swift
@@ -41,7 +44,15 @@ public final class RawTTY: @unchecked Sendable {
     private static let kittyKeyboardPush = "\u{1B}[>1u"
     private static let kittyKeyboardPop = "\u{1B}[<u"
 
-    /// kitty 控制序列的输出 fd，默认 stdout（与 `StdoutTerminal` 同一通道）。
+    /// bracketed paste 模式控制序列（DECSET/DECRST 2004）：`enter()` 时开启，
+    /// 终端随后把粘贴内容包进 `ESC[200~`/`ESC[201~` 标记交给 `InputPipeline`
+    /// 聚合为单个 `.paste` 事件；`restore()` 时关闭。不支持的终端（如
+    /// Terminal.app）静默吸收这两条序列，粘贴退回裸按键流（行为与之前一致）。
+    private static let bracketedPasteEnable = "\u{1B}[?2004h"
+    private static let bracketedPasteDisable = "\u{1B}[?2004l"
+
+    /// 终端控制序列（kitty 键盘、bracketed paste）的输出 fd，默认 stdout
+    /// （与 `StdoutTerminal` 同一通道）。
     /// 仅在该 fd 是 TTY 时写入。internal 以便测试注入（如 PTY slave）。
     let kittyControlFD: Int32
 
@@ -61,7 +72,7 @@ public final class RawTTY: @unchecked Sendable {
         self.kittyControlFD = STDOUT_FILENO
     }
 
-    /// 测试专用：指定 kitty 控制序列的输出 fd。
+    /// 测试专用：指定终端控制序列（kitty 键盘、bracketed paste）的输出 fd。
     init(fd: Int32, kittyControlFD: Int32) {
         self.fd = fd
         self.kittyControlFD = kittyControlFD
@@ -104,9 +115,12 @@ public final class RawTTY: @unchecked Sendable {
             throw RawTTYError.unableToSetAttributes(errno: errno)
         }
 
-        // 进入 raw mode 后开启 kitty 键盘协议，让 Shift+Enter 等组合键以
-        // CSI-u 序列到达（KeyParser 负责解析）。尽力而为，失败不视为 enter 失败。
-        Self.writeKittyControlSequence(Self.kittyKeyboardPush, to: kittyControlFD)
+        // 进入 raw mode 后开启 kitty 键盘协议（让 Shift+Enter 等组合键以 CSI-u
+        // 序列到达，KeyParser 负责解析）和 bracketed paste 模式（让终端把粘贴
+        // 内容包进 ESC[200~/ESC[201~，InputPipeline 聚合为 .paste 事件）。
+        // 尽力而为，写入失败不视为 enter 失败。
+        Self.writeControlSequence(Self.kittyKeyboardPush, to: kittyControlFD)
+        Self.writeControlSequence(Self.bracketedPasteEnable, to: kittyControlFD)
     }
 
     /// Restores the previously saved terminal attributes.
@@ -120,12 +134,13 @@ public final class RawTTY: @unchecked Sendable {
                 onRestoreFailureStorage?(errno)
             }
             originalTermios = nil
-            Self.writeKittyControlSequence(Self.kittyKeyboardPop, to: kittyControlFD)
+            Self.writeControlSequence(Self.kittyKeyboardPop, to: kittyControlFD)
+            Self.writeControlSequence(Self.bracketedPasteDisable, to: kittyControlFD)
         }
     }
 
-    /// 向控制 fd 写入 kitty 控制序列；目标不是 TTY 时跳过。
-    private static func writeKittyControlSequence(_ sequence: String, to fd: Int32) {
+    /// 向控制 fd 写入终端控制序列（kitty 键盘、bracketed paste）；目标不是 TTY 时跳过。
+    private static func writeControlSequence(_ sequence: String, to fd: Int32) {
         guard isatty(fd) == 1 else { return }
         _ = writeToFileDescriptor(fd, sequence)
     }
