@@ -82,6 +82,7 @@ enum DemoFixtureCatalog {
         DemoFixture(name: "narrow", fileName: "markdown-narrow-terminal-showcase.md", summary: "窄终端换行压力"),
         DemoFixture(name: "sample", fileName: "markdownview-sample.md", summary: "markdownview 经典样本"),
         DemoFixture(name: "transcript", fileName: "long-transcript.md", summary: "长 transcript 滚动"),
+        DemoFixture(name: "soak", fileName: "markdown-long-fence-soak.md", summary: "长未闭合 fence 预览浸泡（TASK-29）"),
     ]
 
     static func lookup(_ name: String) -> DemoFixture? {
