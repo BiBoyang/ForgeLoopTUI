@@ -114,6 +114,11 @@ let tui = TUI(
 )
 ```
 
+### Frames taller than the terminal (tail-window fallback)
+- When `committed + live` exceeds `terminalHeight` in physical rows, the inline-anchor strategy renders only the frame's **bottom `terminalHeight` physical rows** (whole-line granularity) in place: absolute cursor positioning + erase-to-end-of-screen (`ESC[0J`), no full-screen `ESC[2J`, and no trailing newline once the window reaches the bottom row.
+- The fallback therefore **never scrolls**: transient content (e.g. a streaming markdown preview) is never pushed into scrollback, no matter how often it is re-rendered. Lines that must reach scrollback permanently have exactly one channel: `TUI.appendFrame`.
+- In the erase → `appendFrame` → redraw settle sequence, the redraw starts below the freshly appended lines (tracked by the runtime), so appended history is neither overwritten nor duplicated.
+
 ### `cursorOffset`
 - Optional horizontal cursor offset **within the live region**.
 - When present, the runtime anchors the frame (no trailing newline) and emits ANSI cursor-positioning sequences.

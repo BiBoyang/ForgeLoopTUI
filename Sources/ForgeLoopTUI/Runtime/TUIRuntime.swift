@@ -102,6 +102,13 @@ public final class TUI: @unchecked Sendable {
     private var lastCursorOffset: Int = 0
     private let ttyNewline = "\r\n"
 
+    /// appendFrame 写下但未被任何 retained 帧接管的光标行位置（物理行，
+    /// clamp 到 height-1）。erase→append→redraw 协议里 redraw 时 retained
+    /// 状态为空，超屏尾窗回退据此从追加区之下开画，而不是从 home 覆盖掉
+    /// 刚 append 的历史行。任何状态接管（syncRetainedState / inline 路径
+    /// 的状态交换）将其清零。
+    private var unretainedAppendedRows: Int = 0
+
     // MARK: - Commit / Live state
     private var committedLines: [String] = []
     private var lastCommittedPhysicalRows: Int = 0
@@ -281,6 +288,13 @@ public final class TUI: @unchecked Sendable {
         }
         if isTTY {
             writeFrameOutput(output)
+            if !normalizedLines.isEmpty {
+                let rows = totalPhysicalRows(for: normalizedLines) + 1 // 尾随换行的光标空行
+                lock.withLock {
+                    let height = max(1, dimsLock.withLock { _terminalHeight })
+                    unretainedAppendedRows = min(unretainedAppendedRows + rows, height - 1)
+                }
+            }
         } else {
             terminal.write(output)
         }
@@ -299,6 +313,7 @@ public final class TUI: @unchecked Sendable {
             pendingPlacementUndoUp = 0
             pendingPlacementUndoHorizontal = 0
             pendingPlacementUndoOverride = nil
+            unretainedAppendedRows = 0
         }
     }
 
@@ -501,13 +516,73 @@ public final class TUI: @unchecked Sendable {
         case .inlineAnchor:
             if shouldFallbackToFullRedraw(committed: committed, live: live) {
                 diagnosticsHandler?(.fullRedraw(reason: "committed+live exceeds terminal height"))
-                let allLines = committed + live
-                syncRetainedState(lines: allLines, committed: committed, live: live, cursorOffset: cursorOffset)
-                renderLegacy(lines: allLines, cursorOffset: cursorOffset)
+                renderOversizedTailWindow(committed: committed, live: live, cursorOffset: cursorOffset)
             } else {
                 renderInlineCommittedLive(committed: committed, live: live, cursorOffset: cursorOffset)
             }
         }
+    }
+
+    /// 超屏回退（inlineAnchor 的 committed/live 路径）：帧物理行超过终端
+    /// 高度时，只绘制帧的尾部窗口（底部 height 物理行），不滚动、不进
+    /// scrollback。
+    ///
+    /// 旧实现复用 renderLegacy（ESC[2J + 从 home 整帧重写）：帧超高时整帧
+    /// 重写本身触发终端滚动，顶部溢出行被推进 scrollback——流式预览每个
+    /// chunk 触发一次，同一份预览内容在 scrollback 里重复多份（TASK-37）。
+    /// iTerm2 系终端还会把 ED2 清掉的内容存入 scrollback，连空渲染擦除帧
+    /// 都会沉淀一份预览。改为：
+    /// - CUP 绝对归位 + `ESC[0J` 擦到屏尾（ED0 是部分擦除，无 scrollback
+    ///   语义），不用 ED2；
+    /// - 只写尾部窗口内的行（整行粒度，不切分行——与 LiveBudgetPlanner
+    ///   同口径）；单个比窗口还高的行退化为整行写入（允许其自身滚动）；
+    /// - 窗口写满可用行时末行之后不发换行（光标悬在底行时换行即滚动）；
+    /// - retained 状态为空（erase→append→redraw 协议的 redraw 步）时从
+    ///   `unretainedAppendedRows`（appendFrame 写下的行）之下开画，刚追加
+    ///   的历史行不被覆盖——它们经由 appendFrame 的滚动恰好落卷轴一次。
+    ///
+    /// retained 状态仍记录完整帧：后续帧只要 max(prev, current) 仍超高就
+    /// 继续走本路径整屏重画；首次回到不超高的帧时本路径同样整屏重画
+    /// （窗口 = 全部行），再之后的 inline diff 基线已与真实屏幕一致。
+    private func renderOversizedTailWindow(committed: [String], live: [String], cursorOffset: Int?) {
+        // CUP 绝对归位使上一帧的 placement undo 失去参照，与 renderLegacy
+        // 的清屏同理直接作废（不经 writeFrameOutput 发射）。
+        let startRow: Int = lock.withLock {
+            pendingPlacementUndoUp = 0
+            pendingPlacementUndoHorizontal = 0
+            pendingPlacementUndoOverride = nil
+            let hasRetainedFrame = lastCommittedPhysicalRows + lastLivePhysicalRows > 0
+            return hasRetainedFrame ? 0 : unretainedAppendedRows
+        }
+
+        let allLines = committed + live
+        syncRetainedState(lines: allLines, committed: committed, live: live, cursorOffset: cursorOffset)
+
+        let height = max(1, terminalHeight)
+        let available = max(1, height - startRow)
+        var picked: [String] = []
+        var windowRows = 0
+        for line in allLines.reversed() {
+            let lineRows = physicalRows(for: line, width: terminalWidth)
+            if windowRows + lineRows > available, !picked.isEmpty { break }
+            picked.append(line)
+            windowRows += lineRows
+            if windowRows >= available { break }
+        }
+        let window = picked.reversed() as [String]
+
+        var output = startRow > 0 ? "\u{1B}[\(startRow + 1);1H" : "\u{1B}[H"
+        output += "\u{1B}[0J"
+        output += window.joined(separator: ttyNewline)
+        // 光标悬在底行时尾随换行 = 滚动，只有窗口未写满时才发。
+        let anchored = cursorOffset != nil
+        if !anchored, !window.isEmpty, windowRows < available {
+            output += ttyNewline
+        }
+        if let offset = cursorOffset, offset > 0 {
+            output += "\u{1B}[\(offset)D"
+        }
+        terminal.write(output)
     }
 
     private func renderLegacy(lines: [String], cursorOffset: Int?) {
@@ -539,6 +614,7 @@ public final class TUI: @unchecked Sendable {
             lastCommittedPhysicalRows = totalPhysicalRows(for: committed)
             previousLiveLines = live
             lastLivePhysicalRows = totalPhysicalRows(for: live)
+            unretainedAppendedRows = 0
         }
     }
 
@@ -557,6 +633,7 @@ public final class TUI: @unchecked Sendable {
             lastCommittedPhysicalRows = totalPhysicalRows(for: lines)
             previousLiveLines = []
             lastLivePhysicalRows = 0
+            unretainedAppendedRows = 0
             return (oldPrev, oldRows, anchored, oldCursorOffset)
         }
 
@@ -675,6 +752,7 @@ public final class TUI: @unchecked Sendable {
             lastLivePhysicalRows = totalPhysicalRows(for: live)
             lastCursorAnchored = cursorOffset != nil
             lastCursorOffset = cursorOffset ?? 0
+            unretainedAppendedRows = 0
             // 同步 previousLines 状态
             let allLines = committed + live
             previousLines = allLines
