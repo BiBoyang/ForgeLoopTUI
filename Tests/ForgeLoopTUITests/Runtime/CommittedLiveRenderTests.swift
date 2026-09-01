@@ -250,10 +250,12 @@ struct CommittedLiveRenderTests {
         let spy = OutputSpy()
         let tui = TUI(strategy: .inlineAnchor, isTTY: true, terminalHeight: 2, writer: spy.writer)
 
-        // 首帧 3 行超过终端高度 2，应回退到 legacy
+        // 首帧 3+1 行超过终端高度 2，走超屏尾窗回退：CUP 归位 + ED0 擦除 +
+        // 只写底部 2 行——不滚动、不把溢出行推进 scrollback（TASK-37）。
         tui.render(committed: ["a", "b", "c"], live: ["d"])
 
-        #expect(spy.last?.hasPrefix("\u{1B}[2J\u{1B}[H") ?? false)
+        #expect(spy.last == "\u{1B}[H\u{1B}[0Jc\r\nd")
+        #expect(!(spy.last?.contains("\u{1B}[2J") ?? true))
     }
 
     @Test("resetRetainedFrame clears commit/live state")
@@ -299,17 +301,15 @@ struct CommittedLiveRenderTests {
         let out1 = spy.last
         #expect(out1 == "a\r\nb\r\n")
 
-        // Step 2: 触发 fallback（4 行 > height=2）
+        // Step 2: 触发 fallback（4 行 > height=2）：尾窗回退画底部 2 行
         tui.render(committed: ["f1", "f2", "f3"], live: ["f4"])
         let out2 = spy.last
-        #expect(out2?.contains("\u{1B}[2J") ?? false)
+        #expect(out2 == "\u{1B}[H\u{1B}[0Jf3\r\nf4")
 
-        // Step 3: 恢复 inline，diff 基线应基于 fallback 后的状态
-        // 如果 fallback 没同步 commit/live，prevCommitted 还是 ["a"] 而非 ["f1","f2","f3"]
+        // Step 3: 仍超高，继续尾窗回退；committed 变化反映到窗口内容
         tui.render(committed: ["f1", "f2", "f3"], live: ["newLive"])
         let out3 = spy.last
         #expect(out3?.contains("newLive") ?? false)
-        // 基线正确时 committedDiff=nil，应只 diff live 区（含回退/清除序列）
         #expect(out3?.contains("\u{1B}[") ?? false)
     }
 
