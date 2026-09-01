@@ -1376,16 +1376,32 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         return fittingPrefix(of: compact, maxWidth: width)
     }
 
-    /// 把已内联格式化的单元格文本按可见宽度切成多段（简单按宽度断，不做
-    /// 词法断行）。转义序列整体复制、绝不切断（复用 `escapeSequenceEnd`
-    /// 的 CSI/OSC 感知，与 `fittingPrefix` 同口径）；每段样式自洽：切断处
-    /// 若仍有活跃的 SGR/OSC 8，段尾补 reset（及 OSC 8 闭合），下一段段首
-    /// 重放活跃序列重新打开，样式不泄漏到补白与边框。
+    /// 把已内联格式化的单元格文本按可见宽度切成多段。断行优先级：
+    /// 1. 词边界：段内最近一次空白 run 之后断（整段空白 run 丢弃，不归
+    ///    任何一段），尽量保住完整 ASCII 词；空白自身溢出且段尾恰是词尾
+    ///    时，断点就是当前位置。
+    /// 2. 段内无空白可断（CJK 连排、超宽单词、URL）时退回按宽度硬断——
+    ///    CJK 字符之间本就允许任意断，与旧行为一致。
+    /// 转义序列整体复制、绝不切断（复用 `escapeSequenceEnd` 的 CSI/OSC
+    /// 感知，与 `fittingPrefix` 同口径）；每段样式自洽：切断处若仍有活跃
+    /// 的 SGR/OSC 8，段尾补 reset（及 OSC 8 闭合），下一段段首重放活跃
+    /// 序列重新打开，样式不泄漏到补白与边框。
     ///
     /// 单个比段宽还宽的字形（如宽 1 列中的 CJK）无法对齐又不允许丢内容，
     /// 独占一段并溢出；`minColumnWidth` ≥ 2 时不会触发。
     private func wrappedSegments(of value: String, width: Int) -> [String] {
         guard width > 0, visibleWidth(value) > width else { return [value] }
+
+        /// 词边界断点快照：段内最近一次空白 run 之前的位置。回退切断时
+        /// 空白 run 整体丢弃；断点后的内容从 `resumeIndex` 重新扫描，
+        /// 转义序列与宽度经正常分支重建，无需对段字符串做外科切割。
+        struct WordBreak {
+            var segment: String
+            var styleRun: String
+            var hyperlink: String?
+            var hasEscape: Bool
+            var resumeIndex: String.Index
+        }
 
         var segments: [String] = []
         var current = ""
@@ -1395,6 +1411,8 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         var activeStyleRun = ""
         /// 当前处于打开状态的 OSC 8 开序列（nil 表示不在链接内）。
         var openHyperlink: String?
+        var wordBreak: WordBreak?
+        var lastWasWhitespace = false
         var index = value.startIndex
 
         while index < value.endIndex {
@@ -1410,6 +1428,10 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
                         || sequence.hasPrefix("\u{1B}]8;;\u{7}")
                     openHyperlink = isClose ? nil : sequence
                 }
+                // 转义对断点透明：resumeIndex 不被推进，空白 run 后紧贴的
+                // 序列（如下个词的 SGR 开）重扫时经本分支自然重放。内联格式
+                // 化产出的序列只紧贴词、不会夹在两个空白之间，空白 run 的
+                // 推进因此只由空白字符驱动。
                 current += sequence
                 currentHasEscape = true
                 index = sequenceEnd
@@ -1418,8 +1440,43 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
 
             let character = value[index]
             let characterWidth = visibleWidth(String(character))
+            let isWhitespace = character.isWhitespace
             if currentWidth + characterWidth > width, currentWidth > 0 {
-                // 切断：先闭合本段的链接与样式，再在下一段段首重放活跃序列。
+                // 空白自身溢出且段尾恰是词尾：断点就在当前位置，该空白
+                // 作为断点空白丢弃（resumeIndex 越过它）。
+                if isWhitespace, !lastWasWhitespace {
+                    wordBreak = WordBreak(
+                        segment: current,
+                        styleRun: activeStyleRun,
+                        hyperlink: openHyperlink,
+                        hasEscape: currentHasEscape,
+                        resumeIndex: value.index(after: index)
+                    )
+                }
+                if let breakPoint = wordBreak {
+                    // 词边界切断：段内容回到断点（空白 run 丢弃），断点后
+                    // 的内容从 resumeIndex 重扫。断点处活跃样式/链接闭合并
+                    // 在下一段段首重放，与硬断同口径。
+                    var segment = breakPoint.segment
+                    if breakPoint.hyperlink != nil {
+                        segment += osc8CloseSequence
+                    }
+                    if breakPoint.hasEscape {
+                        segment += "\u{1B}[0m"
+                    }
+                    segments.append(segment)
+                    activeStyleRun = breakPoint.styleRun
+                    openHyperlink = breakPoint.hyperlink
+                    current = activeStyleRun + (openHyperlink ?? "")
+                    currentWidth = 0
+                    currentHasEscape = !current.isEmpty
+                    lastWasWhitespace = false
+                    index = breakPoint.resumeIndex
+                    wordBreak = nil
+                    continue
+                }
+                // 段内无词边界（CJK 连排/超宽单词）：按宽度硬断。先闭合
+                // 本段的链接与样式，再在下一段段首重放活跃序列。
                 if openHyperlink != nil {
                     current += osc8CloseSequence
                 }
@@ -1430,9 +1487,29 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
                 current = activeStyleRun + (openHyperlink ?? "")
                 currentWidth = 0
                 currentHasEscape = !current.isEmpty
+                lastWasWhitespace = false
                 continue
             }
             // currentWidth == 0 且字形比段宽还宽：独占一段并溢出（见函数注释）。
+            if isWhitespace {
+                // 空白 run 的首个空白之前是最优断点（快照不含任何尾随空白）；
+                // resumeIndex 随 run 内空白逐格推进，切断时整个 run 丢弃。
+                // 段首（currentWidth == 0）的空白不产生断点，避免切出零宽段。
+                if !lastWasWhitespace, currentWidth > 0 {
+                    wordBreak = WordBreak(
+                        segment: current,
+                        styleRun: activeStyleRun,
+                        hyperlink: openHyperlink,
+                        hasEscape: currentHasEscape,
+                        resumeIndex: value.index(after: index)
+                    )
+                } else if lastWasWhitespace, wordBreak != nil {
+                    wordBreak?.resumeIndex = value.index(after: index)
+                }
+                lastWasWhitespace = true
+            } else {
+                lastWasWhitespace = false
+            }
             current.append(character)
             currentWidth += characterWidth
             index = value.index(after: index)

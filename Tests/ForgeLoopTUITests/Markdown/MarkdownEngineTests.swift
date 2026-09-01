@@ -1076,8 +1076,131 @@ final class MarkdownEngineTests: XCTestCase {
             let closes = line.components(separatedBy: "\u{1B}]8;;\u{1B}\\").count - 1
             XCTAssertEqual(opens, closes, "hyperlink must close within the same physical line")
         }
+        // 词边界断行（TASK-38）：链接文本与 "(https://...)" 之间的空格恰为
+        // 断点，断点空白按约定丢弃，因此拼回时该位置没有空格。
         let reconstructed = dataLines.map { wrappedRowColumns($0)[2] }.joined()
-        XCTAssertEqual(reconstructed, "abcdefghijklmnopqrstuvwxyz (https://example.com)")
+        XCTAssertEqual(reconstructed, "abcdefghijklmnopqrstuvwxyz(https://example.com)")
+    }
+
+    // MARK: - Table cell word-boundary wrapping (TASK-38)
+
+    func testTableCellWrapPrefersWordBoundariesForEnglishWords() {
+        // 断行优先取段内最近空白之后：完整词保留，不断出 "Deskto/p"。
+        let policy = TableRenderPolicy(maxRenderedWidth: 24, minColumnWidth: 4, maxColumnWidth: nil)
+        let engine = StreamingMarkdownEngine(options: .init(tablePolicy: policy, theme: .none))
+        let text = """
+        | tool | status |
+        | --- | --- |
+        | Docker Desktop | ok |
+        """
+
+        let lines = engine.render(text: text, isFinal: true)
+        let dataLines = Array(lines[3...(lines.count - 2)])
+
+        // 列宽 13："Docker Desktop"(14) 在词边界断成 "Docker" / "Desktop"。
+        XCTAssertEqual(dataLines.map { wrappedRowColumns($0)[1] }, ["Docker", "Desktop"])
+        XCTAssertEqual(dataLines.map { wrappedRowColumns($0)[2] }.joined(), "ok")
+        // 所有物理行对齐同一可见宽度，且各段不超列宽（13）。
+        XCTAssertEqual(Set(lines.map { visibleWidth($0) }), [24])
+        for line in dataLines {
+            XCTAssertLessThanOrEqual(visibleWidth(wrappedRowColumns(line)[1]), 13)
+        }
+    }
+
+    func testTableCellWrapDropsOnlyBreakPointWhitespace() {
+        // 断点空白丢弃、内容空白保留：多词单元格按词贪心装行，非断点处的
+        // 空格原样留在段内。
+        let policy = TableRenderPolicy(maxRenderedWidth: 19, minColumnWidth: 4, maxColumnWidth: nil)
+        let engine = StreamingMarkdownEngine(options: .init(tablePolicy: policy, theme: .none))
+        let text = """
+        | a | b |
+        | --- | --- |
+        | x | one two three four |
+        """
+
+        let lines = engine.render(text: text, isFinal: true)
+        let dataLines = Array(lines[3...(lines.count - 2)])
+
+        // 列宽 8：贪心装词 "one two" / "three" / "four"；断点空格丢弃，
+        // 段内空格（"one two" 中间那个）保留。
+        XCTAssertEqual(dataLines.map { wrappedRowColumns($0)[2] }, ["one two", "three", "four"])
+        XCTAssertEqual(Set(lines.map { visibleWidth($0) }), [19])
+    }
+
+    func testTableCellWrapHardBreaksWordLongerThanColumn() {
+        // 词比列宽还长：无词边界可用，退回按宽度硬断（兜底与旧行为一致）。
+        let policy = TableRenderPolicy(maxRenderedWidth: 24, minColumnWidth: 4, maxColumnWidth: nil)
+        let engine = StreamingMarkdownEngine(options: .init(tablePolicy: policy, theme: .none))
+        let word = "supercalifragilistic" // 20 列
+        let text = """
+        | a | b |
+        | --- | --- |
+        | x | \(word) |
+        """
+
+        let lines = engine.render(text: text, isFinal: true)
+        let dataLines = Array(lines[3...(lines.count - 2)])
+
+        // 列宽 13：20 列单词硬断成 13/7 两段，内容零丢失。
+        XCTAssertEqual(dataLines.map { wrappedRowColumns($0)[2] }, ["supercalifrag", "ilistic"])
+        XCTAssertEqual(dataLines.map { wrappedRowColumns($0)[2] }.joined(), word)
+        XCTAssertEqual(Set(lines.map { visibleWidth($0) }), [24])
+    }
+
+    func testTableCellWrapMixedCJKEnglishKeepsWordsAndAllowsCJKBreaks() {
+        // CJK 混排：英文词不被劈开，CJK 侧仍允许任意位置断（现状）。
+        let policy = TableRenderPolicy(maxRenderedWidth: 24, minColumnWidth: 4, maxColumnWidth: nil)
+        let engine = StreamingMarkdownEngine(options: .init(tablePolicy: policy, theme: .none))
+        let text = """
+        | a | b |
+        | --- | --- |
+        | x | 中文 Docker Desktop 混排 |
+        """
+
+        let lines = engine.render(text: text, isFinal: true)
+        let dataLines = Array(lines[3...(lines.count - 2)])
+
+        // 列宽 13："中文 Docker" 11 列恰好一行（断点空格丢弃）；
+        // "Desktop 混排" 12 列一行；词均未从中间劈开。
+        XCTAssertEqual(dataLines.map { wrappedRowColumns($0)[2] }, ["中文 Docker", "Desktop 混排"])
+        for line in dataLines {
+            XCTAssertLessThanOrEqual(visibleWidth(wrappedRowColumns(line)[2]), 13)
+        }
+        XCTAssertEqual(Set(lines.map { visibleWidth($0) }), [24])
+    }
+
+    func testTableCellWrapWordBoundaryKeepsStyledSegmentsSelfContained() {
+        // 样式单元格的词边界断行：每个物理行 SGR 自洽（开在前、闭在后），
+        // 样式不泄漏到补白与边框；断点空白丢弃后内容可拼回。
+        let policy = TableRenderPolicy(maxRenderedWidth: 26, minColumnWidth: 4, maxColumnWidth: nil)
+        let engine = StreamingMarkdownEngine(options: .init(tablePolicy: policy, theme: .none))
+        let text = """
+        | col | detail |
+        | --- | --- |
+        | ok | **Docker Desktop Kubernetes** |
+        """
+
+        let lines = engine.render(text: text, isFinal: true)
+        let dataLines = Array(lines[3...(lines.count - 2)])
+
+        XCTAssertEqual(Set(lines.map { visibleWidth($0) }), [26])
+        for line in dataLines {
+            guard let lastOpen = line.range(of: "\u{1B}[1m", options: .backwards),
+                  let lastReset = line.range(of: "\u{1B}[0m", options: .backwards) else {
+                XCTFail("wrapped bold segment lost its SGR pair: \(line.debugDescription)")
+                continue
+            }
+            XCTAssertTrue(lastOpen.lowerBound < lastReset.lowerBound)
+        }
+        // 词边界断行：列宽 15，"Docker Desktop"(14) 整词组保留在第一段，
+        // 断点取在第二个空格处（丢弃），第二段为完整词 "Kubernetes"。
+        let segments = dataLines.map { wrappedRowColumns($0)[2] }
+        XCTAssertEqual(segments, ["Docker Desktop", "Kubernetes"])
+        for segment in segments {
+            XCTAssertFalse(segment.hasPrefix(" "), "段首不保留断点空白")
+            XCTAssertFalse(segment.hasSuffix(" "), "段尾不保留断点空白")
+        }
+        XCTAssertEqual(segments.joined(), "Docker DesktopKubernetes")
     }
 }
 
