@@ -1059,18 +1059,23 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         return false
     }
 
+    /// 列宽分配结果。`compressed` 为 true 表示钳制后的总宽仍超预算、压缩
+    /// 循环实际压过至少一列——此时超宽单元格换行而非截断：预算压缩是终端
+    /// 物理约束（内容必须保住），`maxColumnWidth` 钳制是主动选择的紧凑
+    /// 风格（仍走既有截断路径）。两条路径都先按内容算理想宽、钳制到
+    /// [minColumnWidth, maxColumnWidth]，再优先压缩最宽的列直到总宽达标。
     private func resolvedColumnWidths(
         idealWidths: [Int],
         columnCount: Int,
         policy: TableRenderPolicy
-    ) -> [Int]? {
+    ) -> (widths: [Int], compressed: Bool)? {
         guard !idealWidths.isEmpty, idealWidths.count == columnCount else { return nil }
 
         switch policy.overflowBehavior {
         case .degradeImmediately:
             return shouldDegradeWideTable(widths: idealWidths, maxRenderedWidth: policy.maxRenderedWidth)
                 ? nil
-                : idealWidths
+                : (idealWidths, false)
         case .compactThenTruncateThenDegrade:
             let minimumWidth = max(1, policy.minColumnWidth)
             let maxContentWidth = policy.maxRenderedWidth - tableChromeWidth(for: columnCount)
@@ -1084,6 +1089,7 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
                 return clamped
             }
 
+            var compressed = false
             var totalWidth = widths.reduce(0, +)
             while totalWidth > maxContentWidth {
                 guard let widestIndex = widestShrinkableColumn(in: widths, minimumWidth: minimumWidth) else {
@@ -1091,9 +1097,10 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
                 }
                 widths[widestIndex] -= 1
                 totalWidth -= 1
+                compressed = true
             }
 
-            return widths
+            return (widths, compressed)
         }
     }
 
@@ -1168,15 +1175,20 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
             widths[col] = max(widths[col], 1)
         }
 
-        guard let resolvedWidths = resolvedColumnWidths(
+        guard let resolution = resolvedColumnWidths(
             idealWidths: widths,
             columnCount: header.count,
             policy: options.tablePolicy
         ) else {
             return nil
         }
+        let resolvedWidths = resolution.widths
 
-        if options.tablePolicy.wideTableStrategy == .autoReadable,
+        // 换行模式（预算压缩）下超宽单元格成段换行、内容零丢失，不存在
+        // 可读性截断，autoReadable 的降级判定只适用于截断路径——截断路径
+        // 的行为与现状逐字节一致。
+        if !resolution.compressed,
+           options.tablePolicy.wideTableStrategy == .autoReadable,
            shouldDegradeForReadability(
                idealWidths: widths,
                resolvedWidths: resolvedWidths,
@@ -1190,16 +1202,29 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         var output: [String] = []
         let border = theme.tableBorder
         output.append(border.applied(to: borderLine(left: "┌", middle: "┬", right: "┐", widths: resolvedWidths)))
-        output.append(tableRow(
-            cells: formattedHeader,
-            aligns: alignment,
-            widths: resolvedWidths,
-            policy: options.tablePolicy,
-            cellStyle: theme.tableHeader
-        ))
-        output.append(border.applied(to: borderLine(left: "├", middle: "┼", right: "┤", widths: resolvedWidths)))
-        for row in formattedRows {
-            output.append(tableRow(cells: row, aligns: alignment, widths: resolvedWidths, policy: options.tablePolicy))
+        if resolution.compressed {
+            output.append(contentsOf: tableRowWrapped(
+                cells: formattedHeader,
+                aligns: alignment,
+                widths: resolvedWidths,
+                cellStyle: theme.tableHeader
+            ))
+            output.append(border.applied(to: borderLine(left: "├", middle: "┼", right: "┤", widths: resolvedWidths)))
+            for row in formattedRows {
+                output.append(contentsOf: tableRowWrapped(cells: row, aligns: alignment, widths: resolvedWidths))
+            }
+        } else {
+            output.append(tableRow(
+                cells: formattedHeader,
+                aligns: alignment,
+                widths: resolvedWidths,
+                policy: options.tablePolicy,
+                cellStyle: theme.tableHeader
+            ))
+            output.append(border.applied(to: borderLine(left: "├", middle: "┼", right: "┤", widths: resolvedWidths)))
+            for row in formattedRows {
+                output.append(tableRow(cells: row, aligns: alignment, widths: resolvedWidths, policy: options.tablePolicy))
+            }
         }
         output.append(border.applied(to: borderLine(left: "└", middle: "┴", right: "┘", widths: resolvedWidths)))
         return output
@@ -1279,6 +1304,145 @@ public final class StreamingMarkdownEngine: MarkdownEngine {
         }
         let bar = theme.tableBorder.applied(to: "│")
         return bar + " " + parts.joined(separator: " " + bar + " ") + " " + bar
+    }
+
+    /// 单元格换行的段数上限：超出后截断并追加显式省略标注行，绝不静默截断。
+    private let maxWrappedCellSegments = 20
+
+    /// OSC 8 超链接闭合序列，与 `osc8Hyperlink` 的开闭对一致；换行切断处
+    /// 若仍有打开的链接，段尾必须补上它，否则链接状态泄漏到边框。
+    private let osc8CloseSequence = "\u{1B}]8;;\u{1B}\\"
+
+    /// 换行模式的表头/数据行：每个单元格按列宽切成若干可见宽度 ≤ 列宽的段，
+    /// 一个逻辑行渲染为「同行各单元格最大段数」个物理行；段数不足的单元格
+    /// 后续物理行留空补齐，边框照常闭合。
+    private func tableRowWrapped(
+        cells: [String],
+        aligns: [CellAlign],
+        widths: [Int],
+        cellStyle: MarkdownStyle = .none
+    ) -> [String] {
+        var cellSegments: [[String]] = []
+        cellSegments.reserveCapacity(cells.count)
+        for index in 0..<cells.count {
+            var segments = wrappedSegments(of: cells[index], width: widths[index])
+            if segments.count > maxWrappedCellSegments {
+                let omitted = segments.count - maxWrappedCellSegments
+                segments = Array(segments.prefix(maxWrappedCellSegments))
+                    + [omissionMarker(omittedSegments: omitted, width: widths[index])]
+            }
+            cellSegments.append(segments)
+        }
+
+        let height = cellSegments.map(\.count).max() ?? 1
+        let bar = theme.tableBorder.applied(to: "│")
+        var lines: [String] = []
+        lines.reserveCapacity(height)
+        for segmentIndex in 0..<height {
+            var parts: [String] = []
+            for column in 0..<cells.count {
+                let segment = segmentIndex < cellSegments[column].count ? cellSegments[column][segmentIndex] : ""
+                // 与 tableRow 同理：样式只包在补白后的整段之外，绝不进段内。
+                parts.append(cellStyle.applied(to: paddedSegment(segment, width: widths[column], align: aligns[column])))
+            }
+            lines.append(bar + " " + parts.joined(separator: " " + bar + " ") + " " + bar)
+        }
+        return lines
+    }
+
+    /// 与 `padded` 相同的对齐补白，但不做截断——换行模式下的段已由
+    /// `wrappedSegments` 保证可见宽度 ≤ 列宽（单个超宽字形除外，见该函数）。
+    private func paddedSegment(_ value: String, width: Int, align: CellAlign) -> String {
+        let gap = max(0, width - visibleWidth(value))
+        switch align {
+        case .left:
+            return value + String(repeating: " ", count: gap)
+        case .right:
+            return String(repeating: " ", count: gap) + value
+        case .center:
+            let left = gap / 2
+            let right = gap - left
+            return String(repeating: " ", count: left) + value + String(repeating: " ", count: right)
+        }
+    }
+
+    /// 段数超限时的显式省略标注。优先完整形式，列宽不够时退化为紧凑形式，
+    /// 极端窄列至少保住 "..." 前缀——任何情况下省略都不静默发生。
+    private func omissionMarker(omittedSegments: Int, width: Int) -> String {
+        let full = "... (\(omittedSegments) more lines)"
+        if visibleWidth(full) <= width { return full }
+        let compact = "...+\(omittedSegments)"
+        if visibleWidth(compact) <= width { return compact }
+        return fittingPrefix(of: compact, maxWidth: width)
+    }
+
+    /// 把已内联格式化的单元格文本按可见宽度切成多段（简单按宽度断，不做
+    /// 词法断行）。转义序列整体复制、绝不切断（复用 `escapeSequenceEnd`
+    /// 的 CSI/OSC 感知，与 `fittingPrefix` 同口径）；每段样式自洽：切断处
+    /// 若仍有活跃的 SGR/OSC 8，段尾补 reset（及 OSC 8 闭合），下一段段首
+    /// 重放活跃序列重新打开，样式不泄漏到补白与边框。
+    ///
+    /// 单个比段宽还宽的字形（如宽 1 列中的 CJK）无法对齐又不允许丢内容，
+    /// 独占一段并溢出；`minColumnWidth` ≥ 2 时不会触发。
+    private func wrappedSegments(of value: String, width: Int) -> [String] {
+        guard width > 0, visibleWidth(value) > width else { return [value] }
+
+        var segments: [String] = []
+        var current = ""
+        var currentWidth = 0
+        var currentHasEscape = false
+        /// 当前段内自上一个完整 reset 以来的 SGR 序列串，换段时在段首重放。
+        var activeStyleRun = ""
+        /// 当前处于打开状态的 OSC 8 开序列（nil 表示不在链接内）。
+        var openHyperlink: String?
+        var index = value.startIndex
+
+        while index < value.endIndex {
+            if value[index] == "\u{1B}" {
+                let sequenceEnd = escapeSequenceEnd(in: value, at: index)
+                let sequence = String(value[index..<sequenceEnd])
+                if sequence == "\u{1B}[0m" {
+                    activeStyleRun = ""
+                } else if sequence.hasPrefix("\u{1B}[") {
+                    activeStyleRun += sequence
+                } else if sequence.hasPrefix("\u{1B}]8;") {
+                    let isClose = sequence.hasPrefix("\u{1B}]8;;\u{1B}\\")
+                        || sequence.hasPrefix("\u{1B}]8;;\u{7}")
+                    openHyperlink = isClose ? nil : sequence
+                }
+                current += sequence
+                currentHasEscape = true
+                index = sequenceEnd
+                continue
+            }
+
+            let character = value[index]
+            let characterWidth = visibleWidth(String(character))
+            if currentWidth + characterWidth > width, currentWidth > 0 {
+                // 切断：先闭合本段的链接与样式，再在下一段段首重放活跃序列。
+                if openHyperlink != nil {
+                    current += osc8CloseSequence
+                }
+                if currentHasEscape {
+                    current += "\u{1B}[0m"
+                }
+                segments.append(current)
+                current = activeStyleRun + (openHyperlink ?? "")
+                currentWidth = 0
+                currentHasEscape = !current.isEmpty
+                continue
+            }
+            // currentWidth == 0 且字形比段宽还宽：独占一段并溢出（见函数注释）。
+            current.append(character)
+            currentWidth += characterWidth
+            index = value.index(after: index)
+        }
+
+        // 零宽尾段（只剩重放序列、无可见内容）不产生额外物理行。
+        if visibleWidth(current) > 0 || segments.isEmpty {
+            segments.append(current)
+        }
+        return segments
     }
 
     private func padded(_ value: String, width: Int, align: CellAlign, policy: TableRenderPolicy) -> String {

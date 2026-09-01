@@ -883,6 +883,202 @@ final class MarkdownEngineTests: XCTestCase {
         XCTAssertFalse(result.isEmpty)
         XCTAssertTrue(result.contains(where: { $0.contains("abcdefghij") }))
     }
+
+    // MARK: - Table cell wrapping (TASK-36)
+
+    /// 换行表格物理行 → 各列去补白后的可见文本（按 │ 切分；段内补白只
+    /// 出现在两端，测试内容均不以空格开头/结尾，trim 不丢内容）。
+    private func wrappedRowColumns(_ line: String) -> [String] {
+        ansiStripped(line)
+            .split(separator: "│", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+    }
+
+    func testTableCellWrapsLongCJKCellWhenOverBudget() {
+        // 预算 40 列、无 maxColumnWidth 钳制：理想宽 82 > 33 预算 → 压缩
+        // 最宽列到 29，CJK 单元格按 14/14/11 字符换行成 3 个物理行。
+        let policy = TableRenderPolicy(maxRenderedWidth: 40, minColumnWidth: 4, maxColumnWidth: nil)
+        let engine = StreamingMarkdownEngine(options: .init(tablePolicy: policy, theme: .none))
+        let longCell = String(repeating: "这是一段需要换行的中文内容", count: 3)
+        let text = """
+        | 名称 | 说明 |
+        | --- | --- |
+        | 配置 | \(longCell) |
+        """
+
+        let lines = engine.render(text: text, isFinal: true)
+
+        // 3 条边框 + 1 表头物理行 + 3 数据物理行；边框闭合。
+        XCTAssertEqual(lines.count, 7)
+        XCTAssertTrue(lines.first?.hasPrefix("┌") == true)
+        XCTAssertTrue(lines.last?.hasPrefix("└") == true)
+        XCTAssertTrue(lines[2].hasPrefix("├"))
+        // 所有物理行可见宽度一致（对齐零误差）。
+        XCTAssertEqual(Set(lines.map { visibleWidth($0) }), [40])
+        // 无截断标记：内容零丢失。
+        XCTAssertFalse(lines.contains(where: { $0.contains("...") }))
+        // 同行的其他单元格首段对齐、后续段留空。
+        let dataLines = Array(lines[3...5])
+        XCTAssertEqual(dataLines.map { wrappedRowColumns($0)[1] }, ["配置", "", ""])
+        // 换行段按序拼回原始单元格文本。
+        let reconstructed = dataLines.map { wrappedRowColumns($0)[2] }.joined()
+        XCTAssertEqual(reconstructed, longCell)
+    }
+
+    func testTableCellWrapKeepsBoldSegmentsSelfContained() {
+        let policy = TableRenderPolicy(maxRenderedWidth: 40, minColumnWidth: 4, maxColumnWidth: nil)
+        let engine = StreamingMarkdownEngine(options: .init(tablePolicy: policy, theme: .none))
+        let boldCell = "**" + String(repeating: "x", count: 40) + "**"
+        let text = """
+        | col | detail |
+        | --- | --- |
+        | ok | \(boldCell) |
+        """
+
+        let lines = engine.render(text: text, isFinal: true)
+        let dataLines = Array(lines[3...4])
+
+        XCTAssertEqual(lines.count, 6)
+        XCTAssertEqual(Set(lines.map { visibleWidth($0) }), [40])
+        for line in dataLines {
+            // 段尾必须补 reset：本行打开的 bold 必须在本行内闭合，
+            // 样式不泄漏到右侧补白与边框。
+            guard let lastOpen = line.range(of: "\u{1B}[1m", options: .backwards),
+                  let lastReset = line.range(of: "\u{1B}[0m", options: .backwards) else {
+                XCTFail("wrapped bold segment lost its SGR pair: \(line.debugDescription)")
+                continue
+            }
+            XCTAssertTrue(lastOpen.lowerBound < lastReset.lowerBound)
+        }
+        // 段首重开：第二个物理行同样带完整 bold 包裹。
+        XCTAssertTrue(dataLines[1].contains("\u{1B}[1m"))
+        let reconstructed = dataLines.map { wrappedRowColumns($0)[2] }.joined()
+        XCTAssertEqual(reconstructed, String(repeating: "x", count: 40))
+    }
+
+    func testTableCellWrapMultiColumnRowHeightUsesMaxSegmentCount() {
+        // 两列同时被压到理想宽之下：col1 换 2 段、col2 换 3 段，
+        // 行高取最大值 3，col1 的第三个物理行留空补齐。
+        let policy = TableRenderPolicy(maxRenderedWidth: 22, minColumnWidth: 4, maxColumnWidth: nil)
+        let engine = StreamingMarkdownEngine(options: .init(tablePolicy: policy, theme: .none))
+        let cell1 = String(repeating: "c", count: 10)
+        let cell2 = String(repeating: "d", count: 20)
+        let text = """
+        | aa | bb |
+        | --- | --- |
+        | \(cell1) | \(cell2) |
+        """
+
+        let lines = engine.render(text: text, isFinal: true)
+        let dataLines = Array(lines[3...5])
+
+        XCTAssertEqual(lines.count, 7)
+        XCTAssertEqual(Set(lines.map { visibleWidth($0) }), [22])
+        XCTAssertEqual(dataLines.map { wrappedRowColumns($0)[1] }.joined(), cell1)
+        XCTAssertEqual(dataLines.map { wrappedRowColumns($0)[2] }.joined(), cell2)
+        // 段数不足的列在后续物理行留空。
+        XCTAssertEqual(wrappedRowColumns(dataLines[2])[1], "")
+        XCTAssertFalse(wrappedRowColumns(dataLines[2])[2].isEmpty)
+    }
+
+    func testTableCellWrapStreamingMatchesOneShotAndStablePrefixNeverRewinds() {
+        let policy = TableRenderPolicy(maxRenderedWidth: 40, minColumnWidth: 4, maxColumnWidth: nil)
+        let text = """
+        | 名称 | 说明 |
+        | --- | --- |
+        | 配置 | \(String(repeating: "这是一段需要换行的中文内容", count: 3)) |
+        """
+        let expected = StreamingMarkdownEngine(options: .init(tablePolicy: policy, theme: .none))
+            .render(text: text, isFinal: true)
+
+        let engine = StreamingMarkdownEngine(options: .init(tablePolicy: policy, theme: .none))
+        var accumulated = ""
+        var previousStableCount = 0
+        for character in text {
+            accumulated.append(character)
+            let frame = engine.render(text: accumulated, isFinal: false)
+            let stableCount = engine.stableRenderedLineCount
+            XCTAssertLessThanOrEqual(stableCount, frame.count)
+            XCTAssertGreaterThanOrEqual(stableCount, previousStableCount)
+            // 已认证 stable 的行与终态逐行一致，绝不因后续 chunk 改变。
+            XCTAssertEqual(Array(frame.prefix(stableCount)), Array(expected.prefix(stableCount)))
+            previousStableCount = stableCount
+        }
+        let finalFrame = engine.render(text: accumulated, isFinal: true)
+        XCTAssertEqual(finalFrame, expected)
+    }
+
+    func testTableCellWrapBeyondSegmentCapShowsExplicitOmissionMarker() {
+        // 450 列宽内容压进 19 列 → 24 段 > 上限 20：保留前 20 段，
+        // 追加显式省略标注行 "... (4 more lines)"，不允许静默截断。
+        let policy = TableRenderPolicy(maxRenderedWidth: 30, minColumnWidth: 4, maxColumnWidth: nil)
+        let engine = StreamingMarkdownEngine(options: .init(tablePolicy: policy, theme: .none))
+        let text = """
+        | a | b |
+        | --- | --- |
+        | x | \(String(repeating: "y", count: 450)) |
+        """
+
+        let lines = engine.render(text: text, isFinal: true)
+        let dataLines = Array(lines[3...(lines.count - 2)])
+
+        XCTAssertEqual(dataLines.count, 21)
+        XCTAssertEqual(Set(lines.map { visibleWidth($0) }), [30])
+        XCTAssertTrue(dataLines.last?.contains("... (4 more lines)") == true)
+        XCTAssertEqual(wrappedRowColumns(dataLines.last!)[1], "")
+        // 前 20 段内容完整，无静默丢失。
+        let reconstructed = dataLines.prefix(20).map { wrappedRowColumns($0)[2] }.joined()
+        XCTAssertEqual(reconstructed, String(repeating: "y", count: 380))
+    }
+
+    func testAutoReadableStaysBoxedWhenCellsWrap() {
+        // 换行模式下内容零丢失、可读性不受损：autoReadable 不再降级成
+        // 原始管道文本（降级判定只适用于截断路径）。
+        let policy = TableRenderPolicy(
+            maxRenderedWidth: 40,
+            minColumnWidth: 4,
+            maxColumnWidth: nil,
+            wideTableStrategy: .autoReadable
+        )
+        let engine = StreamingMarkdownEngine(options: .init(tablePolicy: policy, theme: .none))
+        let longCell = String(repeating: "这是一段需要换行的中文内容", count: 3)
+        let text = """
+        | 名称 | 说明 |
+        | --- | --- |
+        | 配置 | \(longCell) |
+        """
+
+        let lines = engine.render(text: text, isFinal: true)
+        XCTAssertTrue(lines.first?.hasPrefix("┌") == true)
+        XCTAssertFalse(lines.contains("| 配置 | \(longCell) |"))
+        let dataLines = Array(lines[3...5])
+        XCTAssertEqual(dataLines.map { wrappedRowColumns($0)[2] }.joined(), longCell)
+    }
+
+    func testTableCellWrapKeepsHyperlinkSequencesBalanced() {
+        // 默认主题下链接带 OSC 8：换行切断处必须闭合链接（下一段段首
+        // 重开），任何物理行内 OSC 8 开闭数量必须相等，否则链接状态
+        // 泄漏到边框与后续行。
+        let policy = TableRenderPolicy(maxRenderedWidth: 30, minColumnWidth: 4, maxColumnWidth: nil)
+        let engine = StreamingMarkdownEngine(options: .init(tablePolicy: policy))
+        let text = """
+        | col | link |
+        | --- | --- |
+        | ok | [abcdefghijklmnopqrstuvwxyz](https://example.com) |
+        """
+
+        let lines = engine.render(text: text, isFinal: true)
+        let dataLines = Array(lines[3...(lines.count - 2)])
+
+        XCTAssertEqual(Set(lines.map { visibleWidth($0) }), [30])
+        for line in lines {
+            let opens = line.components(separatedBy: "\u{1B}]8;;https://").count - 1
+            let closes = line.components(separatedBy: "\u{1B}]8;;\u{1B}\\").count - 1
+            XCTAssertEqual(opens, closes, "hyperlink must close within the same physical line")
+        }
+        let reconstructed = dataLines.map { wrappedRowColumns($0)[2] }.joined()
+        XCTAssertEqual(reconstructed, "abcdefghijklmnopqrstuvwxyz (https://example.com)")
+    }
 }
 
 @MainActor
