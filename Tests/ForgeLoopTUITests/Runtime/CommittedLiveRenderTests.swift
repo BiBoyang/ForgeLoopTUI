@@ -15,6 +15,23 @@ struct CommittedLiveRenderTests {
         #expect(!(spy.last?.contains("\u{1B}[2J") ?? false))
     }
 
+    @Test("initial size sync does not scroll an empty frame")
+    func testInitialSizeSyncDoesNotScrollEmptyFrame() {
+        let spy = OutputSpy()
+        let tui = TUI(
+            strategy: .inlineAnchor,
+            isTTY: true,
+            terminalWidth: 80,
+            terminalHeight: 40,
+            writer: spy.writer
+        )
+
+        tui.updateTerminalSize(width: 120, height: 40)
+        tui.render(committed: [], live: ["idle", "❯ "], cursorOffset: 0)
+
+        #expect(spy.last == "idle\r\n❯ ")
+    }
+
     @Test("live region change only redraws from first changed line")
     func testLiveChangeRedrawsFromDiff() {
         let spy = OutputSpy()
@@ -174,7 +191,7 @@ struct CommittedLiveRenderTests {
 
     // MARK: - M4-S5: Resize-safe anchoring and cursor positioning
 
-    @Test("resize recomputes physical rows for correct diff baseline")
+    @Test("resize with a visible frame still reanchors")
     func testResizeRecomputesPhysicalRows() {
         let spy = OutputSpy()
         let tui = TUI(strategy: .inlineAnchor, isTTY: true, terminalWidth: 10, writer: spy.writer)
@@ -183,15 +200,13 @@ struct CommittedLiveRenderTests {
         tui.render(committed: ["a"], live: ["longline"])
         #expect(spy.last == "a\r\nlongline\r\n")
 
-        // resize 到 width=5，"longline" 变成 2 physical rows
+        // resize 到 width=5，已有可见帧，仍须执行重锚定。
         tui.updateTerminalSize(width: 5)
-
-        // 帧2：live 内容变化，diff 应基于重算后的物理行数
         tui.render(committed: ["a"], live: ["newlive"])
+
         let out2 = spy.last!
-        // prevTotalRows = "a"(1) + "longline"(2) = 3，应回退 3 行
-        #expect(out2.contains("\u{1B}[3A"))
-        #expect(out2.contains("newlive"))
+        #expect(out2.hasPrefix("\u{1B}[24;1H"))
+        #expect(out2.contains("a\r\nnewlive\r\n"))
         #expect(!out2.contains("\u{1B}[2J"))
     }
 

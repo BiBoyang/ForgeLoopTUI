@@ -109,6 +109,13 @@ public final class TUI: @unchecked Sendable {
     /// 的状态交换）将其清零。
     private var unretainedAppendedRows: Int = 0
 
+    /// One-shot: the terminal width changed (or `invalidate()` was called), so
+    /// the retained-frame geometry no longer matches what the screen shows.
+    /// The next frame must re-anchor through an absolute full redraw (the
+    /// tail-window path: CUP + ED0, no scrolling, no ED2) instead of relative
+    /// diffing; consumed by ``consumeGeometryReanchor()``. Guarded by `lock`.
+    private var pendingGeometryReanchor: Bool = false
+
     // MARK: - Commit / Live state
     private var committedLines: [String] = []
     private var lastCommittedPhysicalRows: Int = 0
@@ -184,29 +191,56 @@ public final class TUI: @unchecked Sendable {
             // recomputation below, which reads the new dims through the
             // computed getters (i.e. acquires dimsLock again). Sequential
             // acquisition is required; nesting would self-deadlock.
-            dimsLock.withLock {
+            let oldWidth: Int = dimsLock.withLock {
+                let previous = _terminalWidth
                 _terminalWidth = width
                 if let height {
                     _terminalHeight = height
                 }
+                return previous
             }
             // M4-S5: Recompute cached physical rows with new width
             // so that next-frame diff uses correct cursor math.
             lastFramePhysicalRows = totalPhysicalRows(for: previousLines)
             lastCommittedPhysicalRows = totalPhysicalRows(for: committedLines)
             lastLivePhysicalRows = totalPhysicalRows(for: previousLiveLines)
+            // A width change breaks the geometry contract between a visible
+            // frame and what the terminal still shows: the screen keeps the
+            // OLD wrap layout (truncated or rewrapped, terminal-dependent),
+            // while every cache above now speaks the NEW width. Any further
+            // relative cursor math would erase and overwrite the wrong rows —
+            // mid-stream this leaks one stale copy of the preview into
+            // scrollback per frame. An initial size sync has no old geometry
+            // to preserve, so it must not scroll an empty screen.
+            if width != oldWidth, lastFramePhysicalRows > 0 || unretainedAppendedRows > 0 {
+                pendingGeometryReanchor = true
+            }
         }
     }
 
     /// Marks the cached terminal state as invalid (e.g. resize, external screen
-    /// clear), forcing recomputation of all physical-row caches.
-    /// Only recomputes caches; does not modify terminal width/height. Idempotent.
+    /// clear), forcing recomputation of all physical-row caches and an absolute
+    /// re-anchor on the next frame. Does not modify terminal width/height.
+    /// Idempotent.
     public func invalidate() {
         lock.withLock {
             // 仅重算物理行缓存，不修改宽高（避免并发场景下覆盖并发更新的尺寸值）
             lastFramePhysicalRows = totalPhysicalRows(for: previousLines)
             lastCommittedPhysicalRows = totalPhysicalRows(for: committedLines)
             lastLivePhysicalRows = totalPhysicalRows(for: previousLiveLines)
+            // Caller declared the on-screen state untrusted: diff baselines are
+            // void, so the next frame must re-anchor absolutely.
+            pendingGeometryReanchor = true
+        }
+    }
+
+    /// Consumes the one-shot resize/invalidate re-anchor request (see
+    /// `updateTerminalSize`). Guarded by `lock`.
+    private func consumeGeometryReanchor() -> Bool {
+        lock.withLock {
+            let flag = pendingGeometryReanchor
+            pendingGeometryReanchor = false
+            return flag
         }
     }
 
@@ -267,8 +301,11 @@ public final class TUI: @unchecked Sendable {
             syncRetainedState(lines: normalizedLines, committed: normalizedLines, live: [], cursorOffset: cursorOffset)
             renderLegacy(lines: normalizedLines, cursorOffset: cursorOffset)
         case .inlineAnchor:
-            if shouldFallbackToFullRedraw(for: normalizedLines) {
-                diagnosticsHandler?(.fullRedraw(reason: "frame exceeds terminal height"))
+            let reanchor = consumeGeometryReanchor()
+            if reanchor || shouldFallbackToFullRedraw(for: normalizedLines) {
+                diagnosticsHandler?(.fullRedraw(reason: reanchor
+                    ? "geometry reanchor after terminal resize"
+                    : "frame exceeds terminal height"))
                 syncRetainedState(lines: normalizedLines, committed: normalizedLines, live: [], cursorOffset: cursorOffset)
                 renderLegacy(lines: normalizedLines, cursorOffset: cursorOffset)
             } else {
@@ -514,13 +551,69 @@ public final class TUI: @unchecked Sendable {
             syncRetainedState(lines: allLines, committed: committed, live: live, cursorOffset: cursorOffset)
             renderLegacy(lines: allLines, cursorOffset: cursorOffset)
         case .inlineAnchor:
-            if shouldFallbackToFullRedraw(committed: committed, live: live) {
+            if consumeGeometryReanchor() {
+                diagnosticsHandler?(.fullRedraw(reason: "geometry reanchor after terminal resize"))
+                renderGeometryReanchorFrame(committed: committed, live: live, cursorOffset: cursorOffset)
+            } else if shouldFallbackToFullRedraw(committed: committed, live: live) {
                 diagnosticsHandler?(.fullRedraw(reason: "committed+live exceeds terminal height"))
                 renderOversizedTailWindow(committed: committed, live: live, cursorOffset: cursorOffset)
             } else {
                 renderInlineCommittedLive(committed: committed, live: live, cursorOffset: cursorOffset)
             }
         }
+    }
+
+    /// Resize re-anchor（width change / `invalidate()` 之后的第一帧）。
+    ///
+    /// 此刻唯一可信的事实是"几何已不可信"：屏上还是旧宽度排版的行（截断
+    /// 还是重排由终端自定），光标相对位置不可依赖，而屏上可能还有**未滚入
+    /// scrollback 的已定稿历史**——所以既不能按新账本做相对 erase（本 bug：
+    /// 每帧漏一份预览进卷轴），也不能 `CUP home + ED0`/`ED2` 整屏擦（会把
+    /// 可见历史擦没，部分终端的 ED2 还会把擦掉的内容再存一份进卷轴）。
+    ///
+    /// 做法：先把整个可见屏**滚出**（在底行发 height 个换行）——可见历史
+    /// 按原顺序落入 scrollback（它本来就要去那里），旧区的陈旧行也随之付
+    /// **一次性**的有界拷贝（resize 的诚实代价：闪一下 + 卷轴里一份旧帧，
+    /// 对照修复前的每帧一份）；然后在已知的空白屏上按尾窗口径绝对定位重
+    /// 画，并以 `syncRetainedState` 把 diff 基线与真实屏幕重新对齐。
+    private func renderGeometryReanchorFrame(committed: [String], live: [String], cursorOffset: Int?) {
+        lock.withLock {
+            pendingPlacementUndoUp = 0
+            pendingPlacementUndoHorizontal = 0
+            pendingPlacementUndoOverride = nil
+        }
+
+        let allLines = committed + live
+        syncRetainedState(lines: allLines, committed: committed, live: live, cursorOffset: cursorOffset)
+
+        let height = max(1, terminalHeight)
+        var picked: [String] = []
+        var windowRows = 0
+        for line in allLines.reversed() {
+            let lineRows = physicalRows(for: line, width: terminalWidth)
+            if windowRows + lineRows > height, !picked.isEmpty { break }
+            picked.append(line)
+            windowRows += lineRows
+            if windowRows >= height { break }
+        }
+        let window = picked.reversed() as [String]
+
+        // ① 滚出整屏：底行连发 height 个换行，可见内容全部进 scrollback。
+        var output = "\u{1B}[\(height);1H"
+        output += String(repeating: ttyNewline, count: height)
+        // ② 空白屏上从屏顶重画（与新鲜启动同构，也与尾窗路径的 CUP home 同
+        //    口径）。不能贴屏底：底部锚定会让后续每次预览增长都在底行滚屏，
+        //    把预览顶行逐帧漏进 scrollback——恰好复刻本修复要消灭的泄漏。
+        output += "\u{1B}[H"
+        output += window.joined(separator: ttyNewline)
+        let anchored = cursorOffset != nil
+        if !anchored, !window.isEmpty, windowRows < height {
+            output += ttyNewline
+        }
+        if let offset = cursorOffset, offset > 0 {
+            output += "\u{1B}[\(offset)D"
+        }
+        terminal.write(output)
     }
 
     /// 超屏回退（inlineAnchor 的 committed/live 路径）：帧物理行超过终端
