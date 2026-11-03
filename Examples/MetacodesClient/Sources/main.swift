@@ -561,16 +561,29 @@ final class MetacodesClientApp {
 
         let inputRendered = input.render()
         let prompt = Style.prompt("❯ ", mode: .automatic)
+        let placeholder = input.isEmpty ? "输入消息… · Enter 发送" : nil
         let continuation = "  "
         let inputLines: [String] = inputRendered.lines.enumerated().map { idx, line in
-            idx == 0 ? prompt + line : continuation + line
+            guard idx == 0 else { return continuation + line }
+            let renderedPlaceholder = placeholder.map { Style.dimmed($0, mode: .automatic) } ?? ""
+            return prompt + line + renderedPlaceholder
+        }
+        // Placeholder text is presentation-only. Include its width in the
+        // end-relative offset so the cursor stays at the real insertion point.
+        let inputCursor = if let placeholder {
+            CursorPlacement(
+                up: inputRendered.cursor.up,
+                offset: inputRendered.cursor.offset + visibleWidth(placeholder)
+            )
+        } else {
+            inputRendered.cursor
         }
 
         Self.dlog("render preview=\(preview.count) live=\(1 + inputLines.count) first=\(preview.first.map { String($0.prefix(24)) } ?? "-")")
         tui.render(
             committed: preview,
             live: [status] + inputLines,
-            cursorPlacement: inputRendered.cursor
+            cursorPlacement: inputCursor
         )
     }
 
