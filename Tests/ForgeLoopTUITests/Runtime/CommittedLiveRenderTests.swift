@@ -32,6 +32,68 @@ struct CommittedLiveRenderTests {
         #expect(spy.last == "idle\r\n❯ ")
     }
 
+    @Test("unchanged frame after resize defers re-anchor without scrolling")
+    func testUnchangedFrameAfterResizeDefersReanchor() {
+        let spy = OutputSpy()
+        let tui = TUI(
+            strategy: .inlineAnchor,
+            isTTY: true,
+            cursorPositioningMode: .marker,
+            writer: spy.writer
+        )
+        let placement = CursorPlacement(up: 0, offset: 0)
+
+        tui.render(committed: [], live: ["status", "❯ "], cursorPlacement: placement)
+        tui.updateTerminalSize(width: 100, height: 30)
+        let outputCount = spy.outputs.count
+        tui.render(committed: [], live: ["status", "❯ "], cursorPlacement: placement)
+
+        let noOpOutput = spy.outputs.dropFirst(outputCount).joined()
+        #expect(!noOpOutput.contains("\u{1B}[30;1H"))
+        #expect(!noOpOutput.contains("status"))
+        #expect(!noOpOutput.contains("\r\n"))
+
+        let changedOutputCount = spy.outputs.count
+        tui.render(committed: [], live: ["status", "❯ changed"], cursorPlacement: placement)
+        let changedOutput = spy.outputs.dropFirst(changedOutputCount).joined()
+        #expect(changedOutput.contains("\u{1B}[30;1H"))
+        #expect(changedOutput.contains("❯ changed"))
+    }
+
+    @Test("anchored input edits erase a presentation-only placeholder")
+    func testAnchoredInputEditsErasePlaceholder() {
+        let vt = VirtualTerminal(width: 40, height: 12)
+        let tui = TUI(
+            strategy: .inlineAnchor,
+            isTTY: true,
+            terminalWidth: 40,
+            terminalHeight: 12,
+            cursorPositioningMode: .marker,
+            terminal: vt
+        )
+        let placeholder = "输入消息… · Enter 发送"
+        let prompt = Style.prompt("❯ ", mode: .ansi)
+
+        tui.render(
+            committed: [],
+            live: ["status", prompt + Style.dimmed(placeholder, mode: .ansi)],
+            cursorPlacement: CursorPlacement(up: 0, offset: visibleWidth(placeholder))
+        )
+        for text in ["q", "qi", "qin"] {
+            tui.render(
+                committed: [],
+                live: ["status", prompt + text],
+                cursorPlacement: CursorPlacement(up: 0, offset: 0)
+            )
+        }
+
+        let screen = vt.screenLines.joined(separator: "\n")
+        #expect(!screen.contains(placeholder))
+        #expect(!screen.contains("输入消息"))
+        #expect(screen.contains("❯ qin"))
+        #expect(vt.cursorCol == 5)
+    }
+
     @Test("live region change only redraws from first changed line")
     func testLiveChangeRedrawsFromDiff() {
         let spy = OutputSpy()

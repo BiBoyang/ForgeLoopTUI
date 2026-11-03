@@ -111,8 +111,8 @@ public final class TUI: @unchecked Sendable {
 
     /// One-shot: the terminal width changed (or `invalidate()` was called), so
     /// the retained-frame geometry no longer matches what the screen shows.
-    /// The next frame must re-anchor through an absolute full redraw (the
-    /// tail-window path: CUP + ED0, no scrolling, no ED2) instead of relative
+    /// The next changed frame must re-anchor through an absolute full redraw
+    /// after preserving the visible screen in scrollback, instead of relative
     /// diffing; consumed by ``consumeGeometryReanchor()``. Guarded by `lock`.
     private var pendingGeometryReanchor: Bool = false
 
@@ -241,6 +241,25 @@ public final class TUI: @unchecked Sendable {
             let flag = pendingGeometryReanchor
             pendingGeometryReanchor = false
             return flag
+        }
+    }
+
+    /// A resize may be discovered by a render whose visible frame is unchanged
+    /// (for example, Escape clearing an already-empty input). In that case the
+    /// ordinary no-change path is sufficient: it maintains cursor placement
+    /// without scrolling the live region into scrollback. Keep the re-anchor
+    /// pending so the next genuinely changed frame still performs it.
+    private func hasUnchangedFrameDuringGeometryReanchor(
+        committed: [String],
+        live: [String],
+        cursorOffset: Int?
+    ) -> Bool {
+        lock.withLock {
+            guard pendingGeometryReanchor else { return false }
+            return committed == committedLines
+                && live == previousLiveLines
+                && lastCursorAnchored == (cursorOffset != nil)
+                && lastCursorOffset == (cursorOffset ?? 0)
         }
     }
 
@@ -551,7 +570,13 @@ public final class TUI: @unchecked Sendable {
             syncRetainedState(lines: allLines, committed: committed, live: live, cursorOffset: cursorOffset)
             renderLegacy(lines: allLines, cursorOffset: cursorOffset)
         case .inlineAnchor:
-            if consumeGeometryReanchor() {
+            if hasUnchangedFrameDuringGeometryReanchor(
+                committed: committed,
+                live: live,
+                cursorOffset: cursorOffset
+            ) {
+                renderInlineCommittedLive(committed: committed, live: live, cursorOffset: cursorOffset)
+            } else if consumeGeometryReanchor() {
                 diagnosticsHandler?(.fullRedraw(reason: "geometry reanchor after terminal resize"))
                 renderGeometryReanchorFrame(committed: committed, live: live, cursorOffset: cursorOffset)
             } else if shouldFallbackToFullRedraw(committed: committed, live: live) {
